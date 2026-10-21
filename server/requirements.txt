@@ -1,0 +1,9 @@
+# ASR server venv on the GPU box (~/dictate/.venv). vLLM lives in a separate venv (~/vllm-env),
+# because NeMo and vLLM pin conflicting torch/transformers versions.
+torch
+numpy
+nemo_toolkit[asr]
+silero-vad
+fastapi
+uvicorn[standard]
+httpx
