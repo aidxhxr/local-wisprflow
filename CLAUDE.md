@@ -1,7 +1,7 @@
-# CLAUDE.md — setting up local-whisrflow
+# CLAUDE.md — setting up local-wisprflow
 
 This file is for an AI agent (Claude Code or similar) that has been asked to install and run
-local-whisrflow for its user. Follow it top to bottom. Every step has a check; do not move on
+local-wisprflow for its user. Follow it top to bottom. Every step has a check; do not move on
 until the check passes. Where a value depends on the user's machines (hostnames, usernames,
 GPU size), ask once, then keep going.
 

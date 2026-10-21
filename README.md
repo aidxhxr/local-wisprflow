@@ -1,4 +1,4 @@
-# local-whisrflow
+# local-wisprflow
 
 Wispr Flow-style dictation on your own hardware. The Mac records, a GPU box over an SSH
 tunnel does streaming speech recognition (NVIDIA Parakeet TDT 0.6B v2) and app-aware
