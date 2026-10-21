@@ -1,0 +1,15 @@
+[Unit]
+Description=Dictation formatter LLM (vLLM, Qwen3-4B-Instruct-2507)
+After=network.target
+
+[Service]
+WorkingDirectory=%h/dictate
+Environment=HF_HUB_DISABLE_PROGRESS_BARS=1
+ExecStart=%h/vllm-env/bin/vllm serve Qwen/Qwen3-4B-Instruct-2507 --host 127.0.0.1 --port 8766 --served-model-name formatter --gpu-memory-utilization 0.40 --max-model-len 8192 --max-num-seqs 8 --enable-prefix-caching --speculative-config '{"method":"ngram","num_speculative_tokens":6,"prompt_lookup_max":4,"prompt_lookup_min":2}'
+Restart=always
+RestartSec=5
+KillMode=mixed
+TimeoutStopSec=30
+
+[Install]
+WantedBy=default.target
