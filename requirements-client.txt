@@ -1,0 +1,10 @@
+# macOS client (python 3.12). Install into ./.venv; the ./dictate launcher expects it there.
+numpy>=2.0
+pynput>=1.8
+pyobjc-core>=12
+pyobjc-framework-Cocoa>=12
+pyobjc-framework-Quartz>=12
+pyobjc-framework-ApplicationServices>=12
+pyobjc-framework-CoreText>=12
+sounddevice>=0.5
+websocket-client>=1.8
