@@ -453,9 +453,9 @@ class Dictation:
         self.where = ""
         self.sid = ""
         self.t_stop = 0.0
-        self.paste_q: queue.Queue = queue.Queue()
+        self.out_q: queue.Queue = queue.Queue()   # partials and finals, in order, one worker
         self.final_sid = ""          # id of the last session that produced a final
-        threading.Thread(target=self._paste_loop, daemon=True).start()
+        threading.Thread(target=self._out_loop, daemon=True).start()
 
     # -- audio sink (PortAudio thread)
     def _audio(self, raw: bytes):
@@ -533,33 +533,48 @@ class Dictation:
         t = m.get("type")
         if t == "partial":
             self.ov.partial(m["text"])
+            self.out_q.put(m)
         elif t == "started":
             self.where = f"{self.where} · {m.get('category')}"
             if self.active:
                 self.ov.listening(self.where, self.handsfree)
         elif t == "final":
-            self.paste_q.put(m)
+            self.out_q.put(m)
 
-    def _paste_loop(self):
+    def _out_loop(self):
+        """Everything that touches the target app happens here, in message order: a partial can
+        never be typed after the final that supersedes it."""
         while True:
-            m = self.paste_q.get()
-            self.final_sid = m.get("id") or self.final_sid
-            if m.get("error"):
-                log(f"  server error: {m['error']}")
-                self.ov.error("Server error: " + m["error"]); ding("Basso")
+            m = self.out_q.get()
+            if m.get("type") == "partial":
+                # Coalesce: if more partials are already waiting, only the newest matters.
+                while not self.out_q.empty() and self.out_q.queue[0].get("type") == "partial":
+                    m = self.out_q.get()
+                self._on_partial(m)
                 continue
-            text = (m.get("text") or "").strip()
-            tm = m.get("timings") or {}
-            lat = (time.time() - self.t_stop) * 1000 if self.t_stop and not self.handsfree else 0
-            timing = f"asr {tm.get('asr_ms', 0)} ms · llm {tm.get('llm_ms', 0)} ms" + (f" · {lat:.0f} ms after release" if lat else "")
-            if text:
-                sep = "" if text.endswith("\n") else " "
-                insert_text(text + sep)
-            keep = self.active and self.handsfree
-            self.ov.done(text, timing, keep=keep)
-            if keep:
-                self.ov.listening(self.where, True)
-            log(f"  {m.get('audio_s', 0):4.1f}s | {timing} | {m.get('category')} | {m.get('raw')!r} -> {text!r}")
+            self._on_final(m)
+
+    def _on_partial(self, m):
+        pass
+
+    def _on_final(self, m):
+        self.final_sid = m.get("id") or self.final_sid
+        if m.get("error"):
+            log(f"  server error: {m['error']}")
+            self.ov.error("Server error: " + m["error"]); ding("Basso")
+            return
+        text = (m.get("text") or "").strip()
+        tm = m.get("timings") or {}
+        lat = (time.time() - self.t_stop) * 1000 if self.t_stop and not self.handsfree else 0
+        timing = f"asr {tm.get('asr_ms', 0)} ms · llm {tm.get('llm_ms', 0)} ms" + (f" · {lat:.0f} ms after release" if lat else "")
+        if text:
+            sep = "" if text.endswith("\n") else " "
+            insert_text(text + sep)
+        keep = self.active and self.handsfree
+        self.ov.done(text, timing, keep=keep)
+        if keep:
+            self.ov.listening(self.where, True)
+        log(f"  {m.get('audio_s', 0):4.1f}s | {timing} | {m.get('category')} | {m.get('raw')!r} -> {text!r}")
 
 
 # ====================================================================== main
