@@ -79,6 +79,14 @@ class Tunnel:
             self.proc.terminate()
 
 
+def port_in_use_by_other_ssh() -> bool:
+    try:
+        out = subprocess.run(["lsof", "-nP", f"-iTCP:{args.port}", "-sTCP:LISTEN"], capture_output=True, text=True).stdout
+    except Exception:
+        return False
+    return any(line.startswith("ssh") and str(os.getpid()) not in line for line in out.splitlines()[1:])
+
+
 # ====================================================================== overlay (main thread only)
 def on_main(fn):
     def wrapper(*a, **k):
@@ -661,6 +669,9 @@ def main():
     d = Dictation(overlay)
     if not d.streamer.connected.wait(30):
         log("server not reachable on the tunnel. Is dictate.service running on the GPU box?")
+        if port_in_use_by_other_ssh():
+            log(f"port {args.port} is held by another ssh process: a previous client's tunnel is still up. "
+                f"Run: pkill -f 'ssh -N.*{args.port}'")
         os._exit(1)
     log("server ok. checking microphone ...")
     d.rec.check()
