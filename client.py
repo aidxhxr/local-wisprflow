@@ -171,10 +171,11 @@ class Overlay:
         self.panel.orderFrontRegardless()
 
     @on_main
-    def listening(self, where, handsfree=False):
+    def listening(self, where, handsfree=False, live=False):
         self._show()
         self._dot(self.RED, True)
-        self.title.setStringValue_(("Hands-free · tap to stop · " if handsfree else "Listening · ") + where)
+        head = "Hands-free · tap to stop" if handsfree else "Listening"
+        self.title.setStringValue_(head + (" · live" if live else "") + " · " + where)
         self.text.setStringValue_("…")
 
     @on_main
@@ -510,7 +511,7 @@ class Dictation:
             self.active, self.handsfree = True, False
             self.rec.start()
             ding("Tink")
-            self.ov.listening(self.where)
+            self.ov.listening(self.where, live=self.live_on)
             sel = f" | selection: {ctx['selected_text'][:40]!r}" if ctx["selected_text"] else ""
             log(f"▶ {self.where} ({ctx['bundle']}) {ctx['title'][:50]!r}{sel}")
 
@@ -520,7 +521,7 @@ class Dictation:
                 return
             self.handsfree = True
             self.streamer.send({"type": "mode", "mode": "auto"})
-            self.ov.listening(self.where, handsfree=True)
+            self.ov.listening(self.where, handsfree=True, live=self.live_on)
             log("  hands-free on")
 
     def stop(self):
@@ -571,7 +572,7 @@ class Dictation:
         elif t == "started":
             self.where = f"{self.where} · {m.get('category')}"
             if self.active:
-                self.ov.listening(self.where, self.handsfree)
+                self.ov.listening(self.where, self.handsfree, live=self.live_on)
         elif t == "final":
             self.out_q.put(m)
 
@@ -638,7 +639,7 @@ class Dictation:
         keep = self.active and self.handsfree
         self.ov.done(text, timing, keep=keep)
         if keep:
-            self.ov.listening(self.where, True)
+            self.ov.listening(self.where, True, live=self.live_on)
         log(f"  {m.get('audio_s', 0):4.1f}s | {timing} | {m.get('category')} | {m.get('raw')!r} -> {text!r}")
 
 
