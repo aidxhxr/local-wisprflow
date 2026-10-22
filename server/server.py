@@ -60,15 +60,35 @@ def _is_fatal_cuda(e: BaseException) -> bool:
     return e.__class__.__name__ == "AcceleratorError" or ("CUDA error" in s and "out of memory" not in s)
 
 
+def _die(e: BaseException):
+    log.critical("fatal CUDA error, exiting so systemd restarts the server: %s", e)
+    logging.shutdown()
+    os._exit(3)
+
+
+def _probe_cuda():
+    """Run a tiny inference to prove the context still works. An out-of-memory error can leave
+    cuDNN in a state where the next real kernel faults with an illegal memory access; better to
+    find out now and restart than to serve a dead model behind a green /health."""
+    try:
+        with _gpu_lock, torch.inference_mode():
+            _model.transcribe([np.zeros(SR // 2, dtype=np.float32)], batch_size=1, verbose=False)
+            torch.cuda.synchronize()
+    except Exception as e:
+        _die(e)
+
+
 def _asr(m, audio: np.ndarray) -> str:
     try:
         with _gpu_lock, torch.inference_mode():
             out = m.transcribe([audio], batch_size=1, verbose=False)
+    except torch.OutOfMemoryError:
+        torch.cuda.empty_cache()
+        _probe_cuda()
+        raise
     except Exception as e:
         if _is_fatal_cuda(e):
-            log.critical("fatal CUDA error, exiting so systemd restarts the server: %s", e)
-            logging.shutdown()
-            os._exit(3)
+            _die(e)
         raise
     h = out[0]
     if isinstance(h, (list, tuple)):
