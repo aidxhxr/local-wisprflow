@@ -109,8 +109,17 @@ def _resample(x: np.ndarray, sr: int) -> np.ndarray:
 
 
 # ------------------------------------------------------------------ HTTP
+_last_probe = 0.0
+PROBE_INTERVAL_S = 60
+
+
 @app.get("/health")
 async def health():
+    """Green only if the model actually runs: at most once a minute, push silence through it."""
+    global _last_probe
+    if _model is not None and time.time() - _last_probe > PROBE_INTERVAL_S:
+        _last_probe = time.time()
+        await asyncio.to_thread(_probe_cuda)
     return {"ok": _model is not None, "model": MODEL_NAME, "llm": await _fmt.health()}
 
 
