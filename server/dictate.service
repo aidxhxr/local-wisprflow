@@ -8,6 +8,7 @@ Environment=DICTATE_MODEL=nvidia/parakeet-tdt-0.6b-v2
 Environment=DICTATE_HOST=127.0.0.1
 Environment=DICTATE_PORT=8765
 Environment=HF_HUB_DISABLE_PROGRESS_BARS=1
+Environment=PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True
 ExecStart=%h/dictate/.venv/bin/python %h/dictate/server.py
 Restart=always
 RestartSec=3
