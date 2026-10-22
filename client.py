@@ -43,6 +43,7 @@ p.add_argument("--type", action="store_true", help="type characters instead of p
 p.add_argument("--no-live", action="store_true", default=os.environ.get("DICTATE_LIVE", "1") in ("0", "no", "false"),
                help="do not type the transcript live while speaking; insert only on release (or DICTATE_LIVE=0)")
 p.add_argument("--fake-audio", help="(testing) stream this 16 kHz mono wav instead of the mic")
+p.add_argument("--no-insert", action="store_true", help="(testing) log what would be typed/pasted, touch no app")
 p.add_argument("--debug", action="store_true")
 args = p.parse_args()
 HOTKEY = HOTKEYS[args.key]
@@ -387,12 +388,20 @@ class LiveText:
         self.text = ""
 
     def _backspace(self, n):
+        if args.no_insert:
+            if n:
+                log(f"  [no-insert] backspace x{n}")
+            return
         for _ in range(n):
             self.kb.tap(keyboard.Key.backspace)
 
     def _type(self, s):
-        if s:
-            self.kb.type(s)
+        if not s:
+            return
+        if args.no_insert:
+            log(f"  [no-insert] type {s!r}")
+            return
+        self.kb.type(s)
 
     def update(self, new: str):
         """Make the app show `new` in place of what we typed so far."""
@@ -421,6 +430,9 @@ class LiveText:
 
 
 def insert_text(text: str):
+    if args.no_insert:
+        log(f"  [no-insert] paste {text!r}")
+        return
     if args.type:
         kb.type(text)
         return
