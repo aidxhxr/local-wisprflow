@@ -458,6 +458,8 @@ class Dictation:
         self.out_q: queue.Queue = queue.Queue()   # partials and finals, in order, one worker
         self.live = LiveText(kb)
         self.live_on = False         # typing partials into the app for this session
+        self.live_seg = 1            # hands-free segment the live text belongs to
+        self.live_seq = 0            # newest partial seq typed
         self.final_sid = ""          # id of the last session that produced a final
         threading.Thread(target=self._out_loop, daemon=True).start()
 
@@ -478,6 +480,7 @@ class Dictation:
             self.sid = f"{time.time():.3f}"
             self.streamer.send({"type": "start", "id": self.sid, "mode": "hold", "context": ctx})
             self.live.reset()
+            self.live_seg, self.live_seq = 1, 0
             # With a selection the utterance is an instruction ("make this formal"); typing it
             # would destroy the selection the formatter is about to rewrite.
             self.live_on = not args.no_live and not ctx["selected_text"]
@@ -565,6 +568,14 @@ class Dictation:
     def _on_partial(self, m):
         if not self.live_on or m.get("id") != self.sid:
             return
+        seg, seq = m.get("segment", 1), m.get("seq", 0)
+        if seg < self.live_seg or (seg == self.live_seg and seq <= self.live_seq):
+            return                      # older than what is already on screen
+        if seg > self.live_seg:
+            # Hands-free: the previous segment was finalised; what follows is fresh text.
+            self.live.reset()
+            self.live_seg = seg
+        self.live_seq = seq
         self.live.update(m.get("text") or "")
 
     def _on_final(self, m):
@@ -585,6 +596,8 @@ class Dictation:
                 insert_text(text + sep)
         elif self.live_on and m.get("id") == self.sid:
             self.live.clear()
+        if self.live_on and m.get("id") == self.sid:
+            self.live_seg = (m.get("segment") or self.live_seg) + 1   # next partials start clean
         keep = self.active and self.handsfree
         self.ov.done(text, timing, keep=keep)
         if keep:
