@@ -40,6 +40,8 @@ p.add_argument("--no-tunnel", action="store_true", help="assume the tunnel is al
 p.add_argument("--quiet", action="store_true", help="no start/stop sounds")
 p.add_argument("--no-overlay", action="store_true")
 p.add_argument("--type", action="store_true", help="type characters instead of pasting")
+p.add_argument("--no-live", action="store_true", default=os.environ.get("DICTATE_LIVE", "1") in ("0", "no", "false"),
+               help="do not type the transcript live while speaking; insert only on release (or DICTATE_LIVE=0)")
 p.add_argument("--fake-audio", help="(testing) stream this 16 kHz mono wav instead of the mic")
 p.add_argument("--debug", action="store_true")
 args = p.parse_args()
@@ -476,7 +478,7 @@ class Dictation:
             self.sid = f"{time.time():.3f}"
             self.streamer.send({"type": "start", "id": self.sid, "mode": "hold", "context": ctx})
             self.live.reset()
-            self.live_on = True
+            self.live_on = not args.no_live
             self.active, self.handsfree = True, False
             self.rec.start()
             ding("Tink")
