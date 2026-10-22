@@ -593,7 +593,9 @@ class Dictation:
             return
         if not self._same_app():
             return
-        seg, seq = m.get("segment", 1), m.get("seq", 0)
+        seg, seq = m.get("segment", self.live_seg), m.get("seq")
+        if seq is None:                 # older server without numbering: trust message order
+            seq = self.live_seq + 1
         if seg < self.live_seg or (seg == self.live_seg and seq <= self.live_seq):
             return                      # older than what is already on screen
         if seg > self.live_seg:
