@@ -612,7 +612,9 @@ class Dictation:
             self.live.reset()
             self.live_seg = seg
         self.live_seq = seq
-        self.live.update(m.get("text") or "")
+        # Parakeet guesses sentence-final punctuation on whatever the last word is right now;
+        # the next partial usually takes it back. Hold it until the final.
+        self.live.update((m.get("text") or "").rstrip(" .,;:"))
 
     def _same_app(self) -> bool:
         """If the user switched apps mid-dictation, stop typing: backspaces would hit the wrong
