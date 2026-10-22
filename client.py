@@ -234,6 +234,11 @@ def _cg_title(pid):
     return ""
 
 
+def frontmost_pid() -> int:
+    app = NSWorkspace.sharedWorkspace().frontmostApplication()
+    return int(app.processIdentifier()) if app is not None else 0
+
+
 def get_context() -> dict:
     ctx = {"bundle": "", "app": "", "title": "", "selected_text": ""}
     try:
@@ -458,6 +463,7 @@ class Dictation:
         self.out_q: queue.Queue = queue.Queue()   # partials and finals, in order, one worker
         self.live = LiveText(kb)
         self.live_on = False         # typing partials into the app for this session
+        self.live_pid = 0            # frontmost app when the session began
         self.live_seg = 1            # hands-free segment the live text belongs to
         self.live_seq = 0            # newest partial seq typed
         self.final_sid = ""          # id of the last session that produced a final
@@ -481,6 +487,7 @@ class Dictation:
             self.streamer.send({"type": "start", "id": self.sid, "mode": "hold", "context": ctx})
             self.live.reset()
             self.live_seg, self.live_seq = 1, 0
+            self.live_pid = frontmost_pid()
             # With a selection the utterance is an instruction ("make this formal"); typing it
             # would destroy the selection the formatter is about to rewrite.
             self.live_on = not args.no_live and not ctx["selected_text"]
@@ -568,6 +575,8 @@ class Dictation:
     def _on_partial(self, m):
         if not self.live_on or m.get("id") != self.sid:
             return
+        if not self._same_app():
+            return
         seg, seq = m.get("segment", 1), m.get("seq", 0)
         if seg < self.live_seg or (seg == self.live_seg and seq <= self.live_seq):
             return                      # older than what is already on screen
@@ -578,8 +587,18 @@ class Dictation:
         self.live_seq = seq
         self.live.update(m.get("text") or "")
 
+    def _same_app(self) -> bool:
+        """If the user switched apps mid-dictation, stop typing: backspaces would hit the wrong
+        window. The text already typed stays where it is; the final is pasted into the new app."""
+        if self.live_on and frontmost_pid() != self.live_pid:
+            log("  focus changed, live text off for this session")
+            self.live_on = False
+            self.live.reset()
+        return self.live_on
+
     def _on_final(self, m):
         self.final_sid = m.get("id") or self.final_sid
+        self._same_app()
         if m.get("error"):
             log(f"  server error: {m['error']}")
             self.ov.error("Server error: " + m["error"]); ding("Basso")
