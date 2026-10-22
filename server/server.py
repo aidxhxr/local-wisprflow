@@ -98,7 +98,10 @@ async def health():
 async def transcribe(request: Request, sr: int = Query(SR)):
     if _model is None:
         return JSONResponse({"error": "model loading"}, status_code=503)
-    pcm = _resample(pcm16_to_f32(await request.body()), sr)
+    body = await request.body()
+    if len(body) > MAX_BUFFER_S * sr * 2:
+        return JSONResponse({"error": f"audio longer than {MAX_BUFFER_S}s"}, status_code=413)
+    pcm = _resample(pcm16_to_f32(body), sr)
     audio_s = len(pcm) / SR
     if audio_s < 0.25:
         return {"text": "", "audio_s": audio_s, "infer_ms": 0.0}
