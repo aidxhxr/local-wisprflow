@@ -478,7 +478,9 @@ class Dictation:
             self.sid = f"{time.time():.3f}"
             self.streamer.send({"type": "start", "id": self.sid, "mode": "hold", "context": ctx})
             self.live.reset()
-            self.live_on = not args.no_live
+            # With a selection the utterance is an instruction ("make this formal"); typing it
+            # would destroy the selection the formatter is about to rewrite.
+            self.live_on = not args.no_live and not ctx["selected_text"]
             self.active, self.handsfree = True, False
             self.rec.start()
             ding("Tink")
