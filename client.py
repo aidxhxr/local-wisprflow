@@ -454,6 +454,8 @@ class Dictation:
         self.sid = ""
         self.t_stop = 0.0
         self.out_q: queue.Queue = queue.Queue()   # partials and finals, in order, one worker
+        self.live = LiveText(kb)
+        self.live_on = False         # typing partials into the app for this session
         self.final_sid = ""          # id of the last session that produced a final
         threading.Thread(target=self._out_loop, daemon=True).start()
 
@@ -473,6 +475,8 @@ class Dictation:
             self.where = ctx["app"] or "?"
             self.sid = f"{time.time():.3f}"
             self.streamer.send({"type": "start", "id": self.sid, "mode": "hold", "context": ctx})
+            self.live.reset()
+            self.live_on = True
             self.active, self.handsfree = True, False
             self.rec.start()
             ding("Tink")
@@ -555,7 +559,9 @@ class Dictation:
             self._on_final(m)
 
     def _on_partial(self, m):
-        pass
+        if not self.live_on or m.get("id") != self.sid:
+            return
+        self.live.update(m.get("text") or "")
 
     def _on_final(self, m):
         self.final_sid = m.get("id") or self.final_sid
@@ -569,7 +575,12 @@ class Dictation:
         timing = f"asr {tm.get('asr_ms', 0)} ms · llm {tm.get('llm_ms', 0)} ms" + (f" · {lat:.0f} ms after release" if lat else "")
         if text:
             sep = "" if text.endswith("\n") else " "
-            insert_text(text + sep)
+            if self.live_on and m.get("id") == self.sid:
+                self.live.replace(text + sep, insert_text)
+            else:
+                insert_text(text + sep)
+        elif self.live_on and m.get("id") == self.sid:
+            self.live.clear()
         keep = self.active and self.handsfree
         self.ov.done(text, timing, keep=keep)
         if keep:
