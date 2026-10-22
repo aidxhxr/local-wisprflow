@@ -202,7 +202,13 @@ class Session:
                         continue
                 new_s = (self.n - self.n_transcribed) / SR
                 if new_s >= PARTIAL_MIN_NEW_AUDIO and time.time() - self.t_last_partial >= PARTIAL_MIN_INTERVAL:
-                    await self._partial()
+                    try:
+                        await self._partial()
+                    except Exception as e:
+                        # One bad partial (OOM, transient CUDA hiccup) must not end live text for
+                        # the rest of the utterance; the final still gets the whole buffer.
+                        log.warning("partial failed, skipping: %s: %s", e.__class__.__name__, str(e)[:120])
+                        self.t_last_partial = time.time()
         except asyncio.CancelledError:
             pass
         except Exception:
