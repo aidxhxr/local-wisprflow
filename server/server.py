@@ -20,6 +20,8 @@ PORT = int(os.environ.get("DICTATE_PORT", "8765"))
 SR = 16000
 PARTIAL_MIN_INTERVAL = 0.22      # s between partial transcriptions
 PARTIAL_MIN_NEW_AUDIO = 0.25     # s of new audio before re-transcribing
+PARTIAL_WINDOW_S = 20            # partials re-run ASR on at most this much trailing audio
+PARTIAL_CUT_SEARCH_S = 2.0       # ...and freeze the text before the quietest point in this span
 AUTO_SILENCE_MS = 850            # hands-free: finalize after this much trailing silence
 AUTO_MIN_SPEECH_MS = 250         # ...but only if we heard at least this much speech
 AUTO_MAX_SEGMENT_S = 40          # hands-free: force a cut at the next short pause past this
@@ -108,6 +110,22 @@ def _resample(x: np.ndarray, sr: int) -> np.ndarray:
     return np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x).astype(np.float32)
 
 
+def quietest_point(x: np.ndarray, lo: int, hi: int, frame: int = SR // 20) -> int:
+    """Sample index of the lowest-energy 50 ms frame in x[lo:hi]; a safe place to cut audio."""
+    lo, hi = max(0, lo), min(len(x), hi)
+    if hi - lo <= frame:
+        return hi
+    seg = x[lo:hi]
+    n = (len(seg) // frame) * frame
+    e = (seg[:n].reshape(-1, frame) ** 2).mean(axis=1)
+    return lo + int(e.argmin()) * frame + frame // 2
+
+
+def join_text(a: str, b: str) -> str:
+    a, b = a.strip(), b.strip()
+    return f"{a} {b}" if a and b else (a or b)
+
+
 # ------------------------------------------------------------------ HTTP
 _last_probe = 0.0
 PROBE_INTERVAL_S = 60
@@ -159,7 +177,9 @@ class Session:
         self.chunks: list[np.ndarray] = []
         self.n = 0                            # samples in buffer
         self.n_transcribed = 0                # samples covered by self.partial_text
-        self.partial_text = ""
+        self.partial_text = ""                # committed + window text, what the user sees live
+        self.committed = ""                   # text for audio before win_start; never re-transcribed
+        self.win_start = 0                    # sample index where the live window begins
         self.t_start = time.time()
         self.t_last_partial = 0.0
         self.closed = False
@@ -220,13 +240,27 @@ class Session:
         if len(buf) < SR * 0.3:
             return
         t0 = time.time()
-        text = await asyncio.to_thread(_asr, _model, buf)
+        if n - self.win_start > PARTIAL_WINDOW_S * SR:
+            await self._freeze_window(buf)
+        text = await asyncio.to_thread(_asr, _model, buf[self.win_start:])
         self.t_last_partial = time.time()
         self.n_transcribed = n
-        self.partial_text = text
+        self.partial_text = join_text(self.committed, text)
         if not self.closed:
             await self.send({"type": "partial", "id": self.id, "text": clean(text),
                              "audio_s": round(n / SR, 2), "asr_ms": round((self.t_last_partial - t0) * 1000)})
+
+    async def _freeze_window(self, buf: np.ndarray):
+        """The live window has grown past PARTIAL_WINDOW_S. Cut it at the quietest moment near
+        the end of what we have already transcribed, transcribe [win_start:cut] one last time and
+        append that to the committed prefix. Partials stay O(window) in time and memory no
+        matter how long the key is held, and the committed text never flickers."""
+        cut = quietest_point(buf, self.n_transcribed - int(PARTIAL_CUT_SEARCH_S * SR), self.n_transcribed)
+        if cut <= self.win_start + SR:
+            return
+        text = await asyncio.to_thread(_asr, _model, buf[self.win_start:cut])
+        self.committed = join_text(self.committed, text)
+        self.win_start = cut
 
     def _vad_feed(self, chunks):
         with _vad_lock:
@@ -245,6 +279,7 @@ class Session:
         """Hands-free: emit a final for the current buffer and start a fresh one."""
         buf = self._buffer()
         self.chunks, self.n, self.n_transcribed, self.partial_text = [], 0, 0, ""
+        self.committed, self.win_start = "", 0
         with _vad_lock:
             self.vad.reset()
         self.seg += 1
