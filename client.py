@@ -289,11 +289,12 @@ class Recorder:
 
 
 class FakeRecorder:
-    """Streams a wav file at real-time pace (testing only)."""
-    def __init__(self, sink, path):
-        self.sink, self.run = sink, False
+    """Streams a wav file at real-time pace (testing only); calls on_end when the clip is over."""
+    def __init__(self, sink, path, on_end=None):
+        self.sink, self.run, self.on_end = sink, False, on_end
         w = wave.open(path); assert w.getframerate() == SR and w.getnchannels() == 1
         self.pcm = w.readframes(w.getnframes())
+        self.seconds = len(self.pcm) / 2 / SR
 
     def start(self):
         self.run = True
@@ -302,6 +303,8 @@ class FakeRecorder:
                 if not self.run:
                     return
                 self.sink(self.pcm[i:i + 2048]); time.sleep(0.064)
+            if self.on_end:
+                threading.Timer(0.4, self.on_end).start()
             while self.run:
                 self.sink(bytes(2048)); time.sleep(0.064)   # silence after the clip
         threading.Thread(target=go, daemon=True).start()
@@ -463,7 +466,8 @@ class Dictation:
     def __init__(self, overlay):
         self.ov = overlay
         self.streamer = Streamer(f"ws://127.0.0.1:{args.port}/stream", self.on_msg)
-        self.rec = FakeRecorder(self._audio, args.fake_audio) if args.fake_audio else Recorder(self._audio)
+        self.rec = (FakeRecorder(self._audio, args.fake_audio, on_end=self.stop) if args.fake_audio
+                    else Recorder(self._audio))
         self.lock = threading.Lock()
         self.active = False          # a session is recording
         self.handsfree = False
@@ -660,6 +664,18 @@ def main():
     listener = keyboard.Listener(on_press=d.on_press, on_release=d.on_release)
     listener.start()
     log(f"ready. hold [{args.key}] to dictate · tap for hands-free · select text + speak to edit · Ctrl-C quits")
+    if args.fake_audio:
+        # Smoke test: run one full session without the hotkey, then exit once the final lands.
+        log(f"fake audio: streaming {args.fake_audio} ({d.rec.seconds:.1f}s), then exiting")
+        threading.Timer(0.5, d.start).start()
+        def watch():
+            t0 = time.time()
+            while time.time() - t0 < d.rec.seconds + FINAL_TIMEOUT_S + 2:
+                if d.final_sid and d.final_sid == d.sid and not d.active:
+                    time.sleep(1.5); os._exit(0)
+                time.sleep(0.1)
+            log("fake audio: no final received"); os._exit(1)
+        threading.Thread(target=watch, daemon=True).start()
 
     def quit_(*_):
         if tun:
