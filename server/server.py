@@ -22,6 +22,7 @@ PARTIAL_MIN_INTERVAL = 0.22      # s between partial transcriptions
 PARTIAL_MIN_NEW_AUDIO = 0.25     # s of new audio before re-transcribing
 PARTIAL_WINDOW_S = 20            # partials re-run ASR on at most this much trailing audio
 PARTIAL_CUT_SEARCH_S = 2.0       # ...and freeze the text before the quietest point in this span
+FINAL_CHUNK_S = 60               # final pass: transcribe long recordings in pieces this long
 AUTO_SILENCE_MS = 850            # hands-free: finalize after this much trailing silence
 AUTO_MIN_SPEECH_MS = 250         # ...but only if we heard at least this much speech
 AUTO_MAX_SEGMENT_S = 40          # hands-free: force a cut at the next short pause past this
@@ -99,6 +100,24 @@ def _asr(m, audio: np.ndarray) -> str:
     return (text or "").strip()
 
 
+def _asr_long(m, audio: np.ndarray) -> str:
+    """Transcribe audio of any length: chunks of at most FINAL_CHUNK_S, cut at quiet points,
+    so a ten-minute hold cannot blow up the encoder's activation memory."""
+    limit = FINAL_CHUNK_S * SR
+    if len(audio) <= limit:
+        return _asr(m, audio)
+    parts, start = [], 0
+    while len(audio) - start > limit:
+        cut = quietest_point(audio, start + limit - 5 * SR, start + limit)
+        parts.append(_asr(m, audio[start:cut]))
+        start = cut
+    parts.append(_asr(m, audio[start:]))
+    text = ""
+    for ptxt in parts:
+        text = join_text(text, ptxt)
+    return text
+
+
 def pcm16_to_f32(raw: bytes) -> np.ndarray:
     return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
 
@@ -153,7 +172,7 @@ async def transcribe(request: Request, sr: int = Query(SR)):
     if audio_s < 0.25:
         return {"text": "", "audio_s": audio_s, "infer_ms": 0.0}
     t0 = time.time()
-    text = clean(await asyncio.to_thread(_asr, _model, pcm))
+    text = clean(await asyncio.to_thread(_asr_long, _model, pcm))
     ms = (time.time() - t0) * 1000
     log.info("%.2fs audio -> %.0f ms: %r", audio_s, ms, text)
     return {"text": text, "audio_s": audio_s, "infer_ms": ms}
@@ -302,7 +321,7 @@ class Session:
         if reuse is not None:
             raw_text, asr_ms = reuse, 0.0
         else:
-            raw_text = await asyncio.to_thread(_asr, _model, buf)
+            raw_text = await asyncio.to_thread(_asr_long, _model, buf)
             asr_ms = (time.time() - t0) * 1000
         t1 = time.time()
         fmt = await _fmt.format(raw_text, self.context)
