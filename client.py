@@ -356,6 +356,63 @@ class Streamer:
 kb = keyboard.Controller()
 
 
+def common_prefix_len(a: str, b: str) -> int:
+    n = min(len(a), len(b))
+    i = 0
+    while i < n and a[i] == b[i]:
+        i += 1
+    return i
+
+
+class LiveText:
+    """Mirror the streaming transcript at the cursor, Wispr Flow style.
+
+    Keeps track of exactly what it has typed. Each partial is diffed against that: the diverging
+    tail is backspaced and the new tail typed, so the committed part never flickers. When the
+    formatted final arrives, `replace()` keeps whatever prefix already matches and only rewrites
+    the rest, which for a short sentence is usually just the capitalisation and punctuation.
+    """
+    def __init__(self, kb):
+        self.kb = kb
+        self.text = ""
+
+    def reset(self):
+        self.text = ""
+
+    def _backspace(self, n):
+        for _ in range(n):
+            self.kb.tap(keyboard.Key.backspace)
+
+    def _type(self, s):
+        if s:
+            self.kb.type(s)
+
+    def update(self, new: str):
+        """Make the app show `new` in place of what we typed so far."""
+        if new == self.text:
+            return
+        i = common_prefix_len(self.text, new)
+        self._backspace(len(self.text) - i)
+        self._type(new[i:])
+        self.text = new
+
+    def replace(self, final: str, insert):
+        """Swap our live text for `final`; `insert(str)` is used for a long tail (paste)."""
+        i = common_prefix_len(self.text, final)
+        self._backspace(len(self.text) - i)
+        tail = final[i:]
+        if tail:
+            if len(tail) <= 48 and "\n" not in tail:
+                self._type(tail)
+            else:
+                insert(tail)
+        self.text = ""
+
+    def clear(self):
+        self._backspace(len(self.text))
+        self.text = ""
+
+
 def insert_text(text: str):
     if args.type:
         kb.type(text)
