@@ -204,6 +204,7 @@ class Session:
         self.closed = False
         self.vad = None
         self.vad_pending: list[np.ndarray] = []
+        self.seq = 0                          # partial counter, so clients can drop stale ones
         self.task = asyncio.create_task(self._loop())
         self.seg = 0
 
@@ -266,8 +267,10 @@ class Session:
         self.n_transcribed = n
         self.partial_text = join_text(self.committed, text)
         if not self.closed:
-            await self.send({"type": "partial", "id": self.id, "text": clean(text),
-                             "audio_s": round(n / SR, 2), "asr_ms": round((self.t_last_partial - t0) * 1000)})
+            self.seq += 1
+            await self.send({"type": "partial", "id": self.id, "segment": self.seg + 1, "seq": self.seq,
+                             "text": clean(self.partial_text), "audio_s": round(n / SR, 2),
+                             "asr_ms": round((self.t_last_partial - t0) * 1000)})
 
     async def _freeze_window(self, buf: np.ndarray):
         """The live window has grown past PARTIAL_WINDOW_S. Cut it at the quietest moment near
