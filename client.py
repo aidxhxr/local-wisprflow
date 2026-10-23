@@ -398,6 +398,9 @@ class LiveText:
     formatted final arrives, `replace()` keeps whatever prefix already matches and only rewrites
     the rest, which for a short sentence is usually just the capitalisation and punctuation.
     """
+    STABLE = 40     # chars before the live tail that partials may not rewrite; the final still can
+    ANCHOR = 24     # chars of stable text used to re-align a revised transcript
+
     def __init__(self, kb):
         self.kb = kb
         self.text = ""
@@ -421,11 +424,37 @@ class LiveText:
             return
         self.kb.type(s)
 
+    def _splice_stable(self, new: str) -> str:
+        """ASR re-transcribes the whole window, so it keeps changing 'No wait' to 'no wait' or a
+        comma to a colon forty words back. Rewriting that drags the cursor across text the user
+        has already read. Keep our stable head and take only the tail from the revision, aligned
+        on the last few characters of the head. The formatted final fixes the head anyway."""
+        head = self.text[:len(self.text) - self.STABLE]
+        anchor = "".join(c.lower() for c in head[-self.ANCHOR:] if c.isalnum())
+        if not anchor:
+            return new
+        # Align on letters and digits only, so the flip we are ignoring cannot break the anchor.
+        pos = [k for k, c in enumerate(new) if c.isalnum()]
+        norm = "".join(new[k].lower() for k in pos)
+        start = max(0, sum(c.isalnum() for c in head) - len(anchor) - 40)
+        j = norm.find(anchor, start)
+        if j < 0:
+            return new                      # cannot align: real rewrite
+        tail = new[pos[j + len(anchor) - 1] + 1:]
+        if head and not head[-1].isalnum() and not head[-1].isspace():
+            tail = tail.lstrip(",.;:!?")    # head already carries its punctuation
+        return head + tail
+
     def update(self, new: str):
         """Make the app show `new` in place of what we typed so far."""
         if new == self.text:
             return
         i = common_prefix_len(self.text, new)
+        if i < len(self.text) - self.STABLE:
+            new = self._splice_stable(new)
+            i = common_prefix_len(self.text, new)
+            if new == self.text:
+                return
         self._backspace(len(self.text) - i)
         self._type(new[i:])
         self.text = new
