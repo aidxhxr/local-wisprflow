@@ -291,6 +291,20 @@ class Recorder:
         self.sd = sd
 
     def start(self):
+        try:
+            self._open()
+        except Exception as e:
+            # PortAudio caches the device list at init. When the default input changes (AirPods
+            # connect, a headset is unplugged) opening the stale default fails with an internal
+            # error. Re-scan devices and try once more before giving up.
+            log(f"  mic open failed ({e.__class__.__name__}), rescanning audio devices")
+            try:
+                self.sd._terminate(); self.sd._initialize()
+            except Exception:
+                pass
+            self._open()
+
+    def _open(self):
         self.stream = self.sd.InputStream(samplerate=SR, channels=1, dtype="int16", blocksize=1024,
                                           callback=lambda d, f, t, s: self.sink(d.tobytes()))
         self.stream.start()
@@ -532,6 +546,7 @@ class Dictation:
         self.live_seg = 1            # hands-free segment the live text belongs to
         self.live_seq = 0            # newest partial seq typed
         self.final_sid = ""          # id of the last session that produced a final
+        self.finals_seen: set = set()   # ids of all sessions that produced a final
         threading.Thread(target=self._out_loop, daemon=True).start()
 
     # -- audio sink (PortAudio thread)
@@ -547,6 +562,13 @@ class Dictation:
             if not self.streamer.connected.is_set():
                 self.ov.error("Not connected to the GPU box"); ding("Basso"); return
             ctx = get_context()
+            try:
+                self.rec.start()          # open the mic first: nothing else should change if it fails
+            except Exception as e:
+                log(f"  microphone unavailable: {e}")
+                self.ov.error("Microphone unavailable: check the input device in System Settings → Sound")
+                ding("Basso")
+                return
             self.where = ctx["app"] or "?"
             self.sid = f"{time.time():.3f}"
             self.streamer.send({"type": "start", "id": self.sid, "mode": "hold", "context": ctx})
@@ -557,7 +579,6 @@ class Dictation:
             # would destroy the selection the formatter is about to rewrite.
             self.live_on = not args.no_live and not ctx["selected_text"]
             self.active, self.handsfree = True, False
-            self.rec.start()
             ding("Tink")
             self.ov.listening(self.where, live=self.live_on)
             sel = f" | selection: {ctx['selected_text'][:40]!r}" if ctx["selected_text"] else ""
@@ -586,7 +607,7 @@ class Dictation:
 
     def _check_final(self, sid):
         """The server never answered our stop; don't leave the overlay stuck on 'Formatting'."""
-        if self.final_sid != sid and not self.active:
+        if sid not in self.finals_seen and not self.active:
             log(f"  no final from server after {FINAL_TIMEOUT_S}s (session {sid})")
             self.ov.error("No response from the GPU box. Check: journalctl --user -u dictate")
             ding("Basso")
@@ -667,6 +688,7 @@ class Dictation:
 
     def _on_final(self, m):
         self.final_sid = m.get("id") or self.final_sid
+        self.finals_seen.add(self.final_sid)
         self._same_app()
         if m.get("error"):
             log(f"  server error: {m['error']}")
