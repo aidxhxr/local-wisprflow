@@ -44,6 +44,9 @@ p.add_argument("--no-live", action="store_true", default=os.environ.get("DICTATE
                help="do not type the transcript live while speaking; insert only on release (or DICTATE_LIVE=0)")
 p.add_argument("--fake-audio", help="(testing) stream this 16 kHz mono wav instead of the mic")
 p.add_argument("--no-insert", action="store_true", help="(testing) log what would be typed/pasted, touch no app")
+p.add_argument("--mic", default=os.environ.get("DICTATE_MIC", "builtin"),
+               help="input device: 'builtin' (default: the Mac's own mic, so Bluetooth headphones keep playing "
+                    "music), 'default' (system default input), or part of a device name (or DICTATE_MIC)")
 p.add_argument("--debug", action="store_true")
 args = p.parse_args()
 HOTKEY = HOTKEYS[args.key]
@@ -284,11 +287,45 @@ def get_context() -> dict:
 
 
 # ====================================================================== audio
+BUILTIN_MIC_HINTS = ("macbook", "built-in", "imac", "mac mini", "mac studio", "studio display")
+BLUETOOTH_HINTS = ("airpods", "beats", "bluetooth", "buds", "wh-", "wf-", "bose", "jabra", "sony")
+
+
 class Recorder:
     def __init__(self, sink):
         self.sink, self.stream = sink, None
         import sounddevice as sd
         self.sd = sd
+        self.last_device = None
+
+    def pick_device(self):
+        """Which input to open. Opening a Bluetooth headset's mic flips it into the low-quality
+        hands-free profile: music pauses, playback drops to mono, and the switch itself takes a
+        second. The Mac's own mic is a better dictation mic anyway, so it is the default."""
+        want = (args.mic or "builtin").strip().lower()
+        if want == "default":
+            return None
+        devs = [(i, d) for i, d in enumerate(self.sd.query_devices()) if d["max_input_channels"] > 0]
+        if want == "builtin":
+            for i, d in devs:
+                if any(h in d["name"].lower() for h in BUILTIN_MIC_HINTS):
+                    return i
+            # Any non-Bluetooth input beats a Bluetooth one.
+            for i, d in devs:
+                if not any(h in d["name"].lower() for h in BLUETOOTH_HINTS):
+                    return i
+            return None
+        for i, d in devs:
+            if want in d["name"].lower():
+                return i
+        log(f"  no input device matching {args.mic!r}; using the system default")
+        return None
+
+    def device_name(self, idx):
+        try:
+            return self.sd.query_devices(idx if idx is not None else self.sd.default.device[0])["name"]
+        except Exception:
+            return "default"
 
     def start(self):
         try:
@@ -305,16 +342,23 @@ class Recorder:
             self._open()
 
     def _open(self):
-        self.stream = self.sd.InputStream(samplerate=SR, channels=1, dtype="int16", blocksize=1024,
+        dev = self.pick_device()
+        self.stream = self.sd.InputStream(device=dev, samplerate=SR, channels=1, dtype="int16", blocksize=1024,
                                           callback=lambda d, f, t, s: self.sink(d.tobytes()))
         self.stream.start()
+        name = self.device_name(dev)
+        if name != self.last_device:
+            log(f"  mic: {name}")
+            self.last_device = name
 
     def stop(self):
         if self.stream:
             self.stream.stop(); self.stream.close(); self.stream = None
 
     def check(self):
-        self.sd.check_input_settings(samplerate=SR, channels=1)
+        dev = self.pick_device()
+        self.sd.check_input_settings(device=dev, samplerate=SR, channels=1)
+        log(f"microphone: {self.device_name(dev)}" + ("" if dev is not None else " (system default)"))
 
 
 class FakeRecorder:
