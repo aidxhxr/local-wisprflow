@@ -31,13 +31,27 @@ export DICTATE_SSH=user@gpu-box        # put this in ~/.zshrc
 
 | Gesture | What happens |
 |---|---|
-| **Hold** Right Option, talk, release | Live preview while you speak; formatted text is inserted on release |
+| **Hold** Right Option, talk, release | Your words appear at the cursor as you speak; on release they are swapped in place for the formatted version |
 | **Tap** Right Option | Hands-free: keeps listening, inserts each sentence after you pause (~0.9 s). Tap again to stop |
 | **Select text**, then hold and say an instruction | "Make this more formal", "shorten this", "translate to Spanish" rewrites the selection |
 
-A floating pill at the bottom of the screen shows live text, the app it will insert into, and timings.
+A floating pill at the bottom of the screen shows the live transcript, the app it is typing into, and timings.
 
-Flags: `--key cmd_r|ctrl_r|shift_r|f13|f18|f19`, `--quiet` (no sounds), `--no-overlay`, `--type` (type instead of paste).
+### Live text
+
+While you hold the key, each streaming partial from the server is typed into the focused app. The client
+remembers exactly what it typed; when the transcript is revised it backspaces only the diverging tail and
+types the new one, so text you said a few seconds ago never jumps. On release the LLM-formatted result
+replaces the live text in place, keeping whatever already matches. Live text is off automatically when
+you have text selected (that is an edit instruction), and if you switch apps mid-sentence it stops typing
+rather than send backspaces into the wrong window.
+
+Turn it off with `--no-live` or `DICTATE_LIVE=0` if an app fights synthetic keystrokes (autocomplete
+popups, smart quotes); you then get the old behaviour of a single insert on release.
+
+Flags: `--key cmd_r|ctrl_r|shift_r|f13|f18|f19`, `--quiet` (no sounds), `--no-overlay`, `--no-live`,
+`--type` (type the final instead of pasting), `--fake-audio clip.wav` (smoke test, no hotkey needed),
+`--no-insert` (log instead of typing; for testing).
 
 ## What the formatter does
 
@@ -70,7 +84,13 @@ ssh user@gpu-box                               # whatever $DICTATE_SSH points at
 systemctl --user status dictate dictate-llm     # ASR+API server, vLLM formatter
 journalctl --user -u dictate -f                 # every dictation with timings and raw -> formatted
 systemctl --user restart dictate                # reload after editing server.py / formatter.py
+server/deploy.sh                                # from the Mac: copy server files, restart, wait for /health
 ```
+
+`/health` runs a half-second of silence through the model once a minute, so it goes red (and the server
+restarts itself) if the CUDA context is dead, instead of reporting ok until the next real dictation fails.
+Long holds are safe: partials run on a 20 s sliding window with a frozen prefix, and the final pass chunks
+anything over a minute.
 
 If the overlay says "No response from the GPU box" or "Server error: ... CUDA error", the ASR process hit a sticky
 CUDA fault. The server now exits on those and systemd restarts it within ~15 s; if it keeps happening, check
