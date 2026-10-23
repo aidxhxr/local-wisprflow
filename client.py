@@ -357,7 +357,12 @@ class Streamer:
                 if self.connected.is_set():
                     log(f"stream disconnected: {e.__class__.__name__}")
             self.connected.clear()
-            self.ws = None
+            ws, self.ws = self.ws, None
+            try:
+                if ws is not None:
+                    ws.close()          # otherwise the dead socket sits in CLOSE_WAIT for the process lifetime
+            except Exception:
+                pass
             time.sleep(1)
 
     def _send_loop(self):
