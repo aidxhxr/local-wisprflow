@@ -16,8 +16,9 @@ Mac (client.py)  --ssh -L 8765--> GPU box: server.py :8765  --http--> vLLM :8766
   overlay, paste                  Silero VAD, FastAPI               formats the transcript
 ```
 
-- The Mac records audio, streams 16 kHz PCM over a websocket to the GPU box, shows live partials
-  in a floating pill, and pastes the formatted result at the cursor.
+- The Mac records audio, streams 16 kHz PCM over a websocket to the GPU box, types the live
+  transcript at the cursor as it arrives (and mirrors it in a floating pill), then swaps in the
+  formatted result in place when the key is released.
 - The GPU box runs two systemd user services: `dictate` (ASR + API, `server/server.py`) and
   `dictate-llm` (vLLM serving the formatter model).
 - Both services bind to `127.0.0.1` only. The Mac reaches them through an SSH tunnel the client
@@ -116,6 +117,9 @@ If the GPU has less than 24 GB VRAM and `dictate-llm` fails with an out-of-memor
 to `4096`, then `systemctl --user daemon-reload && systemctl --user restart dictate-llm`.
 The ASR model needs roughly 3 GB on top of whatever vLLM takes.
 
+Later updates: `server/deploy.sh GPU_SSH` from the Mac copies the server files and units, restarts
+`dictate` and waits for `/health`. It does not restart `dictate-llm`.
+
 ### 1.5 Server-side tests
 
 ```
@@ -185,17 +189,22 @@ the restart is required; this is the most common reason the hotkey does nothing.
 Expected log lines, in order: `opening tunnel to ...`, `server ok. checking microphone ...`,
 `ready. hold [alt_r] to dictate ...`. A floating pill appears at the bottom of the screen.
 
-End-to-end check without a microphone or any clicking:
+End-to-end check without a microphone, hotkey or any clicking:
 
 ```
-./dictate --fake-audio server/tests/two.wav
+./dictate --fake-audio server/tests/two.wav --no-insert
 ```
 
-It streams the bundled TTS clip as if it were spoken and shows the formatted result in the pill.
+It opens the tunnel, streams the bundled TTS clip as if it were spoken, logs every live-text
+keystroke it would have sent (`[no-insert] type ...`) and the formatted final, and exits 0.
+Without `--no-insert` it really types into the frontmost app, so only drop the flag when a text
+field is focused on purpose. Unit test for the live-text diff: `.venv/bin/python tests/live_text_test.py`.
 
-Then have the user hold Right Option, speak, release: text is pasted into the frontmost app.
+Then have the user hold Right Option, speak, release: words appear at the cursor while speaking
+and are replaced by the formatted text on release.
 Flags: `--key cmd_r|ctrl_r|shift_r|f13|f18|f19` (hotkey), `--quiet`, `--no-overlay`,
-`--type` (type characters instead of pasting; use if an app rejects the paste).
+`--no-live` (insert only on release; also `DICTATE_LIVE=0`),
+`--type` (type the final instead of pasting; use if an app rejects the paste).
 
 To run it on login, add `<repo>/dictate` as a Login Item, or wrap it in a LaunchAgent. Keep in
 mind the permissions above are granted per launching app.
@@ -207,6 +216,9 @@ mind the permissions above are granted per launching app.
 | `server not reachable on the tunnel` | `ssh -o BatchMode=yes GPU_SSH true` fails, or `systemctl --user status dictate` on the box is not active. Check that `curl localhost:8765/health` works on the box. |
 | Hotkey does nothing, no pill | Input Monitoring / Accessibility not granted to the launching app, or terminal not restarted. |
 | Pill shows text but nothing is pasted | Accessibility missing, or the app blocks synthetic paste: try `--type`. |
+| Live text garbled in one app (autocomplete, smart quotes) | Run with `--no-live` for that workflow. |
+| Live text stops mid-sentence | Focus moved to another app; the client stops typing on purpose. The final is pasted into the new app. |
+| `/health` returns ok but dictation fails, or the server restarts on its own | `/health` now probes the model; a restart after `fatal CUDA error` in the journal is the intended recovery. Repeated restarts: `nvidia-smi`, check RAM/swap on the box. |
 | Raw transcript inserted, no formatting | vLLM down or slower than 3 s (`DICTATE_LLM_TIMEOUT`). `journalctl --user -u dictate-llm`. |
 | `Server error: ... CUDA error` | Sticky CUDA fault. The server exits on purpose and systemd restarts it in ~15 s. If it repeats, `nvidia-smi` and the `dictate` journal. |
 | Port 8765 already in use on the Mac | A previous client's tunnel is still up. `pkill -f "ssh -N.*8765"`. |
@@ -219,8 +231,9 @@ mind the permissions above are granted per launching app.
   `DICTATE_SSH` (client).
 - Formatting behaviour, app categories, few-shot examples: `server/formatter.py`. After
   editing, `scp` it to `~/dictate/` and `systemctl --user restart dictate`.
-- Hands-free segmentation thresholds: constants at the top of `server/server.py`.
-- Hotkey, overlay, paste logic, app-context detection: `client.py`.
+- Hands-free segmentation thresholds, partial window (`PARTIAL_WINDOW_S`), final chunking
+  (`FINAL_CHUNK_S`): constants at the top of `server/server.py`.
+- Hotkey, overlay, live-text typing (`LiveText`), paste logic, app-context detection: `client.py`.
 
 ## Rules for agents working in this repo
 
