@@ -54,6 +54,14 @@ def log(msg):
 
 
 # ====================================================================== SSH tunnel
+def port_in_use_by_other_ssh() -> bool:
+    try:
+        out = subprocess.run(["lsof", "-nP", f"-iTCP:{args.port}", "-sTCP:LISTEN"], capture_output=True, text=True).stdout
+    except Exception:
+        return False
+    return any(line.startswith("ssh") and str(os.getpid()) not in line for line in out.splitlines()[1:])
+
+
 class Tunnel:
     def __init__(self):
         self.proc, self.stop = None, False
@@ -63,6 +71,12 @@ class Tunnel:
 
     def _loop(self):
         while not self.stop:
+            # A client that just exited takes its tunnel down a moment later; wait for the port so
+            # we do not fail the forward (or connect through a tunnel that is about to vanish).
+            for _ in range(50):
+                if not port_in_use_by_other_ssh():
+                    break
+                time.sleep(0.1)
             ssh = (f"ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 "
                    f"-o BatchMode=yes -L {args.port}:127.0.0.1:{args.port} {args.host}")
             # Watchdog: if this client dies for any reason, the tunnel goes with it.
@@ -77,14 +91,6 @@ class Tunnel:
         self.stop = True
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
-
-
-def port_in_use_by_other_ssh() -> bool:
-    try:
-        out = subprocess.run(["lsof", "-nP", f"-iTCP:{args.port}", "-sTCP:LISTEN"], capture_output=True, text=True).stdout
-    except Exception:
-        return False
-    return any(line.startswith("ssh") and str(os.getpid()) not in line for line in out.splitlines()[1:])
 
 
 # ====================================================================== overlay (main thread only)
