@@ -24,7 +24,7 @@ PARTIAL_WINDOW_S = 20            # partials re-run ASR on at most this much trai
 PARTIAL_CUT_SEARCH_S = 2.0       # ...and freeze the text before the quietest point in this span
 FINAL_CHUNK_S = 60               # final pass: transcribe long recordings in pieces this long
 AUTO_SILENCE_MS = 850            # hands-free: finalize after this much trailing silence
-AUTO_MIN_SPEECH_MS = 250         # ...but only if we heard at least this much speech
+AUTO_MIN_SPEECH_MS = 400         # ...but only if we heard at least this much speech
 AUTO_MAX_SEGMENT_S = 40          # hands-free: force a cut at the next short pause past this
 MAX_BUFFER_S = 600
 
@@ -38,6 +38,14 @@ _model = None
 _fmt = Formatter()
 _vad = None            # shared, warmed at startup; sessions are sequential for one user
 _vad_lock = threading.Lock()
+_vad_check = None      # second instance, used only to measure speech in a finished buffer
+_vad_check_lock = threading.Lock()
+
+# What Parakeet produces from breath, keyboard clatter or near-silence: a lone short word.
+# A lone one of these is only believed if the VAD also heard speech.
+HALLUCINATIONS = {"okay", "ok", "yeah", "yes", "yep", "no", "hmm", "mm", "mhm", "huh", "uh", "um", "oh", "so",
+                  "you", "the", "and", "bye", "thanks", "thank you", "i", "a", "right", "well"}
+HALLUCINATION_MIN_SPEECH_MS = 250
 
 
 # ------------------------------------------------------------------ ASR
@@ -53,6 +61,8 @@ def load_model():
     _vad = VAD()
     _vad.feed(np.zeros(SR * 2, dtype=np.float32))   # warm the JIT
     _vad.reset()
+    global _vad_check
+    _vad_check = VAD()
     log.info("model %s ready in %.1fs", MODEL_NAME, time.time() - t0)
 
 
@@ -115,6 +125,27 @@ def _asr_long(m, audio: np.ndarray) -> str:
     text = ""
     for ptxt in parts:
         text = join_text(text, ptxt)
+    return text
+
+
+def looks_hallucinated(text: str) -> bool:
+    words = "".join(c for c in text.lower() if c.isalpha() or c == " ").split()
+    return len(words) <= 2 and " ".join(words) in HALLUCINATIONS
+
+
+def speech_ms(audio: np.ndarray) -> float:
+    """Milliseconds of speech the VAD hears in audio (whole buffer, fresh state)."""
+    with _vad_check_lock:
+        _vad_check.reset()
+        _vad_check.feed(audio)
+        return _vad_check.speech_ms
+
+
+def drop_if_hallucinated(text: str, audio: np.ndarray) -> str:
+    """A lone 'Okay.' or 'Yeah.' from audio the VAD does not consider speech is noise, not words."""
+    if text and looks_hallucinated(text) and speech_ms(audio) < HALLUCINATION_MIN_SPEECH_MS:
+        log.info("dropping hallucinated %r (%.1fs audio, no speech)", text, len(audio) / SR)
+        return ""
     return text
 
 
@@ -262,7 +293,10 @@ class Session:
         t0 = time.time()
         if n - self.win_start > PARTIAL_WINDOW_S * SR:
             await self._freeze_window(buf)
-        text = await asyncio.to_thread(_asr, _model, buf[self.win_start:])
+        win = buf[self.win_start:]
+        text = await asyncio.to_thread(_asr, _model, win)
+        if not self.committed:
+            text = await asyncio.to_thread(drop_if_hallucinated, text, win)
         self.t_last_partial = time.time()
         self.n_transcribed = n
         self.partial_text = join_text(self.committed, text)
@@ -326,6 +360,7 @@ class Session:
         else:
             raw_text = await asyncio.to_thread(_asr_long, _model, buf)
             asr_ms = (time.time() - t0) * 1000
+        raw_text = await asyncio.to_thread(drop_if_hallucinated, raw_text, buf)
         t1 = time.time()
         fmt = await _fmt.format(raw_text, self.context)
         total = (time.time() - t0) * 1000
