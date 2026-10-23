@@ -44,9 +44,10 @@ p.add_argument("--no-live", action="store_true", default=os.environ.get("DICTATE
                help="do not type the transcript live while speaking; insert only on release (or DICTATE_LIVE=0)")
 p.add_argument("--fake-audio", help="(testing) stream this 16 kHz mono wav instead of the mic")
 p.add_argument("--no-insert", action="store_true", help="(testing) log what would be typed/pasted, touch no app")
-p.add_argument("--mic", default=os.environ.get("DICTATE_MIC", "builtin"),
-               help="input device: 'builtin' (default: the Mac's own mic, so Bluetooth headphones keep playing "
-                    "music), 'default' (system default input), or part of a device name (or DICTATE_MIC)")
+p.add_argument("--mic", default=os.environ.get("DICTATE_MIC", "default"),
+               help="input device: 'default' (whatever macOS currently uses: AirPods when worn, etc.), "
+                    "'builtin' (the Mac's own mic, keeps Bluetooth headphones in music mode), "
+                    "or part of a device name (or DICTATE_MIC)")
 p.add_argument("--debug", action="store_true")
 args = p.parse_args()
 HOTKEY = HOTKEYS[args.key]
@@ -299,10 +300,15 @@ class Recorder:
         self.last_device = None
 
     def pick_device(self):
-        """Which input to open. Opening a Bluetooth headset's mic flips it into the low-quality
-        hands-free profile: music pauses, playback drops to mono, and the switch itself takes a
-        second. The Mac's own mic is a better dictation mic anyway, so it is the default."""
-        want = (args.mic or "builtin").strip().lower()
+        """Which input to open. Default: the system's current input, re-scanned every time (2 ms)
+        so headphones connected since launch are seen. Note a Bluetooth headset's mic flips it into
+        the hands-free profile while recording: music pauses and the switch takes about a second;
+        --mic builtin avoids that."""
+        want = (args.mic or "default").strip().lower()
+        try:
+            self.sd._terminate(); self.sd._initialize()   # PortAudio caches devices and the default
+        except Exception:
+            pass
         if want == "default":
             return None
         devs = [(i, d) for i, d in enumerate(self.sd.query_devices()) if d["max_input_channels"] > 0]
