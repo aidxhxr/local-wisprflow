@@ -7,3 +7,6 @@ silero-vad
 fastapi
 uvicorn[standard]
 httpx
+
+# tests/ws_test.py only
+websocket-client
