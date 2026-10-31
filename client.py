@@ -37,8 +37,10 @@ HOTKEYS = {"alt_r": keyboard.Key.alt_r, "alt_l": keyboard.Key.alt_l, "cmd_r": ke
 p = argparse.ArgumentParser()
 p.add_argument("--host", default=os.environ.get("DICTATE_SSH"),
                help="ssh target of the GPU box, e.g. user@gpu-box (default: $DICTATE_SSH)")
-p.add_argument("--port", type=int, default=8765)
-p.add_argument("--key", default="alt_r", choices=sorted(HOTKEYS))
+p.add_argument("--port", type=int, default=int(os.environ.get("DICTATE_PORT", "8765")),
+               help="local and remote port of the server (default: $DICTATE_PORT or 8765)")
+p.add_argument("--key", default=os.environ.get("DICTATE_KEY", "alt_r"), choices=sorted(HOTKEYS),
+               help="push-to-talk key (default: $DICTATE_KEY or alt_r)")
 p.add_argument("--no-tunnel", action="store_true", help="assume the tunnel is already up")
 p.add_argument("--quiet", action="store_true", help="no start/stop sounds")
 p.add_argument("--no-overlay", action="store_true")
@@ -55,6 +57,8 @@ p.add_argument("--mic", default=os.environ.get("DICTATE_MIC", "default"),
 p.add_argument("--debug", action="store_true")
 p.add_argument("--list-mics", action="store_true", help="list input devices (the system default marked *) and exit")
 args = p.parse_args()
+if args.key not in HOTKEYS:     # argparse does not check a default (DICTATE_KEY) against choices
+    p.error(f"--key/DICTATE_KEY must be one of {', '.join(sorted(HOTKEYS))}, not {args.key!r}")
 HOTKEY = HOTKEYS[args.key]
 
 
