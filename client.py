@@ -53,6 +53,7 @@ p.add_argument("--mic", default=os.environ.get("DICTATE_MIC", "default"),
                     "'builtin' (the Mac's own mic, keeps Bluetooth headphones in music mode), "
                     "or part of a device name (or DICTATE_MIC)")
 p.add_argument("--debug", action="store_true")
+p.add_argument("--list-mics", action="store_true", help="list input devices (the system default marked *) and exit")
 args = p.parse_args()
 HOTKEY = HOTKEYS[args.key]
 
@@ -498,6 +499,26 @@ class Recorder:
                 f"empty. If it is a Bluetooth headset, try --mic builtin; run --list-mics to see the inputs.")
         elif args.debug:
             log(f"  mic level ok (rms {rms:.4f})")
+
+
+def list_input_devices() -> list:
+    """[(index, name, is_default)] for every device with an input channel, freshly scanned."""
+    import sounddevice as sd
+    try:
+        sd._terminate(); sd._initialize()
+    except Exception:
+        pass
+    default = sd.default.device[0]
+    return [(i, d["name"], i == default) for i, d in enumerate(sd.query_devices()) if d["max_input_channels"] > 0]
+
+
+def print_input_devices():
+    devs = list_input_devices()
+    if not devs:
+        print("no input devices found")
+    for i, name, dflt in devs:
+        print(f"{'*' if dflt else ' '} {i:2d}  {name}")
+    print("* = system default input. Pick one with --mic 'part of name' or --mic builtin, or DICTATE_MIC.")
 
 
 class FakeRecorder:
@@ -1111,6 +1132,9 @@ class Dictation:
 
 # ====================================================================== main
 def main():
+    if args.list_mics:
+        print_input_devices()
+        return
     tun = None
     if not args.no_tunnel:
         if not args.host:
