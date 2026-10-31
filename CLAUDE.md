@@ -204,17 +204,46 @@ Then have the user hold Right Option, speak, release: words appear at the cursor
 and are replaced by the formatted text on release.
 Flags: `--key cmd_r|ctrl_r|shift_r|f13|f18|f19` (hotkey), `--quiet`, `--no-overlay`,
 `--no-live` (insert only on release; also `DICTATE_LIVE=0`),
-`--type` (type the final instead of pasting; use if an app rejects the paste).
+`--type` (type the final instead of pasting; use if an app rejects the paste),
+`--mic builtin|<name>` (record from the Mac's own mic or a named device instead of the system
+input; also `DICTATE_MIC`), `--doctor` (check mic and permissions, then exit).
 
-To run it on login, add `<repo>/dictate` as a Login Item, or wrap it in a LaunchAgent. Keep in
-mind the permissions above are granted per launching app.
+### 2.6 Keeping it running
+
+Pick one per machine, never two at once: two clients fight over the hotkey and port 8765.
+
+- Terminal: `./dictate`. Dies with the window.
+- tmux: `scripts/dictate-tmux [client flags]` starts a detached tmux session named `dictate`
+  running the client from the repo, or re-attaches if it is already up. `scripts/dictate-tmux log`
+  prints its last screen, `scripts/dictate-tmux stop` kills it. It restarts the client after a
+  crash but not after Ctrl-C or a setup error. Permissions belong to the terminal app the command
+  was first run from.
+  Check: `scripts/dictate-tmux log` ends with the `ready. hold [...]` line.
+- Login: `scripts/install-launchagent.sh [client flags]` writes
+  `~/Library/LaunchAgents/com.local-wisprflow.dictate.plist` from the template in `launchd/`
+  with the repo path and `$DICTATE_SSH` filled in, loads it, and logs to
+  `~/Library/Logs/local-wisprflow.log`. `DRY_RUN=1` prints what it would do without touching
+  anything. It refuses to run while another client is up. launchd starts `.venv/bin/python`
+  directly, so the user must grant Microphone, Accessibility and Input Monitoring to the python
+  binary the script prints ("+" in each list, Cmd-Shift-G, paste the path), then
+  `launchctl kickstart -k gui/$(id -u)/com.local-wisprflow.dictate`. Remove it with
+  `scripts/uninstall-launchagent.sh`. This route has been linted and dry-run only; tell the user.
+  Check: `tail ~/Library/Logs/local-wisprflow.log` shows `ready. hold [...]`.
+
+Whichever you pick, `scripts/status.sh` is the first command when dictation stops working: it
+checks the client process, the tunnel on 8765, ssh in BatchMode, both services, `/health`, vLLM
+and GPU memory through `$DICTATE_SSH`, and exits non-zero if anything is down. `./dictate --doctor`
+covers the microphone and the macOS permissions from inside the client.
+
+Check now: `scripts/status.sh` prints `all good` and exits 0.
 
 ## Troubleshooting
 
 | Symptom | Cause / fix |
 |---|---|
-| `server not reachable on the tunnel` | `ssh -o BatchMode=yes GPU_SSH true` fails, or `systemctl --user status dictate` on the box is not active. Check that `curl localhost:8765/health` works on the box. |
-| Hotkey does nothing, no pill | Input Monitoring / Accessibility not granted to the launching app, or terminal not restarted. |
+| `server not reachable on the tunnel` | `ssh -o BatchMode=yes GPU_SSH true` fails (key not loaded: `ssh-add`, or `ssh-add --apple-use-keychain` for a passphrase key), or `systemctl --user status dictate` on the box is not active. `scripts/status.sh` tells which; `curl localhost:8765/health` on the box must work. |
+| Hotkey does nothing, no pill | First `scripts/status.sh`: if the client is not running (terminal closed, reboot), start it (2.6). If it is, Input Monitoring / Accessibility not granted to the launching app, or terminal not restarted. |
+| Pill listens, transcript stays empty | The system input is a Bluetooth headset whose mic delivers silence. `--mic builtin` (or `DICTATE_MIC=builtin`); `./dictate --doctor` shows the input level. |
 | Pill shows text but nothing is pasted | Accessibility missing, or the app blocks synthetic paste: try `--type`. |
 | Live text garbled in one app (autocomplete, smart quotes) | Run with `--no-live` for that workflow. |
 | Live text stops mid-sentence | Focus moved to another app; the client stops typing on purpose. The final is pasted into the new app. |
@@ -234,6 +263,8 @@ mind the permissions above are granted per launching app.
 - Hands-free segmentation thresholds, partial window (`PARTIAL_WINDOW_S`), final chunking
   (`FINAL_CHUNK_S`): constants at the top of `server/server.py`.
 - Hotkey, overlay, live-text typing (`LiveText`), paste logic, app-context detection: `client.py`.
+- Running the client unattended: `scripts/dictate-tmux`, `scripts/install-launchagent.sh` with the
+  template in `launchd/`; health check: `scripts/status.sh`.
 
 ## Rules for agents working in this repo
 
