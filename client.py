@@ -27,6 +27,7 @@ from ApplicationServices import (AXUIElementCreateApplication, AXUIElementCopyAt
 SR = 16000
 TAP_S = 0.35
 FINAL_TIMEOUT_S = 12        # give up waiting for the server's final after this long
+FOCUS_CONFIRM_S = 0.15      # a focus change must still hold after this long to count
 HOTKEYS = {"alt_r": keyboard.Key.alt_r, "alt_l": keyboard.Key.alt_l, "cmd_r": keyboard.Key.cmd_r,
            "ctrl_r": keyboard.Key.ctrl_r, "shift_r": keyboard.Key.shift_r,
            "f13": keyboard.Key.f13, "f18": keyboard.Key.f18, "f19": keyboard.Key.f19}
@@ -243,6 +244,9 @@ class NullOverlay:
 
 
 # ====================================================================== app context
+from AppKit import NSApplicationActivationPolicyRegular  # noqa: E402
+
+
 def _cg_title(pid):
     try:
         wl = Quartz.CGWindowListCopyWindowInfo(
@@ -255,9 +259,25 @@ def _cg_title(pid):
     return ""
 
 
+def frontmost_app():
+    return NSWorkspace.sharedWorkspace().frontmostApplication()
+
+
 def frontmost_pid() -> int:
-    app = NSWorkspace.sharedWorkspace().frontmostApplication()
+    app = frontmost_app()
     return int(app.processIdentifier()) if app is not None else 0
+
+
+def app_label(app) -> str:
+    if app is None:
+        return "?"
+    return f"{app.localizedName()} ({app.bundleIdentifier() or app.processIdentifier()})"
+
+
+def app_is_regular(app) -> bool:
+    """Only ordinary windowed apps count as a focus target. Spotlight, Notification Center and
+    menu-bar agents run as accessory or prohibited apps and borrow the foreground for a moment."""
+    return app is not None and app.activationPolicy() == NSApplicationActivationPolicyRegular
 
 
 def get_context() -> dict:
@@ -804,12 +824,30 @@ class Dictation:
 
     def _same_app(self) -> bool:
         """If the user switched apps mid-dictation, stop typing: backspaces would hit the wrong
-        window. The text already typed stays where it is; the final is pasted into the new app."""
-        if self.live_on and frontmost_pid() != self.live_pid:
-            log("  focus changed, live text off for this session")
-            self.live_on = False
-            self.live.reset()
-        return self.live_on
+        window. The text already typed stays where it is; the final is pasted into the new app.
+
+        A single sample of the frontmost app is not evidence of a switch: Spotlight, a
+        notification or a menu-bar agent takes the foreground for a moment and gives it back,
+        and the frontmost app is briefly ambiguous while macOS activates a window. Only give up
+        when a regular app other than ours is in front on two samples FOCUS_CONFIRM_S apart."""
+        if not self.live_on:
+            return False
+        app = frontmost_app()
+        if app is None or int(app.processIdentifier()) == self.live_pid:
+            return True
+        if not app_is_regular(app):
+            if args.debug:
+                log(f"  frontmost is {app_label(app)}, a transient app; keeping live text")
+            return True
+        time.sleep(FOCUS_CONFIRM_S)
+        again = frontmost_app()
+        if again is None or int(again.processIdentifier()) == self.live_pid or not app_is_regular(again):
+            log(f"  focus flickered to {app_label(app)} and back; keeping live text")
+            return True
+        log(f"  focus changed to {app_label(again)}, live text off for this session")
+        self.live_on = False
+        self.live.reset()
+        return False
 
     def _on_final(self, m):
         self.final_sid = m.get("id") or self.final_sid
