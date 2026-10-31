@@ -628,6 +628,7 @@ def insert_text(text: str):
     old = pasteboard_snapshot(pb)
     pb.clearContents()
     ok = pb.setString_forType_(text, NSPasteboardTypeString)
+    mine = pb.changeCount()
     time.sleep(0.03)
     with kb.pressed(keyboard.Key.cmd):
         kb.press("v"); kb.release("v")
@@ -635,6 +636,8 @@ def insert_text(text: str):
         fa = NSWorkspace.sharedWorkspace().frontmostApplication()
         log(f"  paste: set={ok} front={fa.localizedName() if fa else None} pb={pb.stringForType_(NSPasteboardTypeString)!r:.40}")
     time.sleep(0.3)
+    if pb.changeCount() != mine:
+        return                  # the user copied something meanwhile; do not overwrite it
     if old:
         pasteboard_restore(pb, old)
 
