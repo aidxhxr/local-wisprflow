@@ -221,6 +221,14 @@ class Overlay:
             self._hide_later(1.3)
 
     @on_main
+    def cancelled(self):
+        self._show()
+        self._dot(self.GRAY, False)
+        self.title.setStringValue_("Cancelled")
+        self.text.setStringValue_("")
+        self._hide_later(1.0)
+
+    @on_main
     def error(self, msg):
         self._show()
         self._dot(self.RED, False)
@@ -692,6 +700,7 @@ class Dictation:
         self.live_seq = 0            # newest partial seq typed
         self.final_sid = ""          # id of the last session that produced a final
         self.finals_seen: set = set()   # ids of all sessions that produced a final
+        self.cancelled_sids: set = set()   # sessions the user abandoned with Escape; their finals are dropped
         threading.Thread(target=self._out_loop, daemon=True).start()
 
     # -- audio sink (PortAudio thread)
@@ -750,6 +759,21 @@ class Dictation:
             self.ov.processing(self.where, "")
             threading.Timer(FINAL_TIMEOUT_S, self._check_final, args=[self.sid]).start()
 
+    def cancel(self):
+        """Escape: throw the session away. Nothing is inserted, the live text is erased."""
+        with self.lock:
+            if not self.active:
+                return
+            self.active, self.handsfree = False, False
+            self.rec.stop()
+            self.cancelled_sids.add(self.sid)
+            self.streamer.send({"type": "cancel"})
+            # Erase the live text on the output thread, after any partial already queued.
+            self.out_q.put({"type": "cancel", "id": self.sid})
+            ding("Pop")
+            self.ov.cancelled()
+            log(f"  cancelled (session {self.sid})")
+
     def _check_final(self, sid):
         """The server never answered our stop; don't leave the overlay stuck on 'Formatting'."""
         if sid not in self.finals_seen and not self.active:
@@ -759,6 +783,10 @@ class Dictation:
 
     # -- hotkey (pynput thread)
     def on_press(self, key):
+        if key == keyboard.Key.esc:
+            if self.active:
+                self.cancel()
+            return
         if key != HOTKEY or self.held:
             return
         self.held, self.press_t = True, time.time()
@@ -800,6 +828,11 @@ class Dictation:
                 while not self.out_q.empty() and self.out_q.queue[0].get("type") == "partial":
                     m = self.out_q.get()
                 self._on_partial(m)
+                continue
+            if m.get("type") == "cancel":
+                if self.live_on and m.get("id") == self.sid:
+                    self.live.clear()
+                self.live_on = False
                 continue
             self._on_final(m)
 
@@ -850,6 +883,9 @@ class Dictation:
         return False
 
     def _on_final(self, m):
+        if m.get("id") in self.cancelled_sids:
+            log(f"  dropping final of cancelled session {m.get('id')}: {m.get('raw')!r}")
+            return
         self.final_sid = m.get("id") or self.final_sid
         self.finals_seen.add(self.final_sid)
         self._same_app()
