@@ -45,7 +45,7 @@ Run these on the GPU box (ssh in, or run them through `ssh GPU_SSH '...'` from t
 ```
 mkdir -p ~/dictate
 # from the Mac, inside the repo:
-scp -r server/server.py server/formatter.py server/vad.py server/requirements.txt server/tests GPU_SSH:~/dictate/
+scp -r server/server.py server/audio_utils.py server/formatter.py server/vad.py server/requirements.txt server/tests GPU_SSH:~/dictate/
 ```
 
 The systemd units hardcode `%h/dictate` as the working directory and `%h/dictate/.venv` and

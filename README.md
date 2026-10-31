@@ -162,7 +162,9 @@ scripts/status.sh         one-screen health check, Mac side and GPU box
 scripts/*-launchagent.sh  install / remove the login LaunchAgent
 launchd/                  LaunchAgent plist template (placeholders filled by the install script)
 tests/live_text_test.py   client unit test for the live-text diff
+server/tests/*_test.py    server unit tests that run on the Mac (no GPU needed)
 server/server.py          streaming ASR server
+server/audio_utils.py     numpy-only helpers: resampling, cut points, hallucination filter
 server/formatter.py       LLM formatting
 server/vad.py             voice activity detection
 server/requirements.txt   ASR server deps (vLLM goes in its own venv)
