@@ -4,7 +4,7 @@ Hold the hotkey (default Right Option) to dictate; release to insert.
 Tap it once for hands-free mode (auto-segments on pauses); tap again to stop.
 Select text first and speak an instruction ("make this more formal") to rewrite the selection.
 """
-import argparse, atexit, json, os, queue, signal, socket, subprocess, sys, threading, time, wave
+import argparse, atexit, fcntl, json, os, queue, signal, socket, subprocess, sys, threading, time, wave
 from collections import deque
 import numpy as np
 import websocket
@@ -1134,11 +1134,77 @@ class Dictation:
         log(f"  {m.get('audio_s', 0):4.1f}s | {timing} | {m.get('category')} | {m.get('raw')!r} -> {text!r}")
 
 
+# ====================================================================== single instance
+LOCK_DIR = os.path.expanduser("~/Library/Application Support/local-wisprflow")
+LOCK_PATH = os.path.join(LOCK_DIR, "client.lock")
+_lock_fd = None     # held open for the process lifetime; the kernel drops the flock when we die
+
+
+def lock_holder_pid() -> int:
+    """pid written in the lock file if another process holds the lock, else 0."""
+    try:
+        fd = os.open(LOCK_PATH, os.O_RDONLY)
+    except OSError:
+        return 0
+    try:
+        fcntl.flock(fd, fcntl.LOCK_SH | fcntl.LOCK_NB)
+        return 0
+    except OSError:
+        try:
+            return int(os.read(fd, 32).strip() or 0)
+        except (OSError, ValueError):
+            return -1
+    finally:
+        os.close(fd)
+
+
+def acquire_instance_lock() -> bool:
+    global _lock_fd
+    os.makedirs(LOCK_DIR, exist_ok=True)
+    fd = os.open(LOCK_PATH, os.O_RDWR | os.O_CREAT, 0o644)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+    except OSError:
+        os.close(fd)
+        return False
+    os.ftruncate(fd, 0)
+    os.write(fd, f"{os.getpid()}\n".encode())
+    _lock_fd = fd
+    return True
+
+
+def other_client_pids() -> list:
+    """Other `python client.py` processes (smoke tests with --fake-audio excluded): clients
+    started before the lock file existed, or from another checkout."""
+    try:
+        out = subprocess.run(["ps", "-axo", "pid=,command="], capture_output=True, text=True).stdout
+    except Exception:
+        return []
+    pids = []
+    for line in out.splitlines():
+        pid, _, cmd = line.strip().partition(" ")
+        argv = cmd.split()
+        if (len(argv) >= 2 and os.path.basename(argv[0]).startswith("python") and argv[1].endswith("client.py")
+                and "--fake-audio" not in argv and "--doctor" not in argv and int(pid) != os.getpid()):
+            pids.append(int(pid))
+    return pids
+
+
 # ====================================================================== main
 def main():
     if args.list_mics:
         print_input_devices()
         return
+    if not args.fake_audio:     # smoke tests may run next to a live client (they use its tunnel)
+        others = other_client_pids()
+        locked = acquire_instance_lock()
+        if not locked:
+            others = sorted(set(others) | ({lock_holder_pid()} - {0, -1}))
+        if others or not locked:
+            who = f"pid {', '.join(map(str, others))}" if others else f"it holds {LOCK_PATH}"
+            log(f"another client is already running ({who}); it owns the hotkey and the tunnel. "
+                + (f"Quit it first: kill {' '.join(map(str, others))}" if others else "Quit it first."))
+            os._exit(3)
     tun = None
     if not args.no_tunnel:
         if not args.host:
