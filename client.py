@@ -585,6 +585,36 @@ class LiveText:
         self.text = ""
 
 
+def pasteboard_snapshot(pb) -> list:
+    """Every item on the pasteboard with all of its types, so a copied image, file or rich
+    text survives the paste; restoring the plain string alone lost those."""
+    items = []
+    for item in pb.pasteboardItems() or []:
+        data = {}
+        for t in item.types():
+            if "promise" in t:      # reading a promised type would make the source app deliver it
+                continue
+            d = item.dataForType_(t)
+            if d is not None:
+                data[t] = d
+        if data:
+            items.append(data)
+    return items
+
+
+def pasteboard_restore(pb, items: list):
+    from AppKit import NSPasteboardItem
+    new = []
+    for data in items:
+        item = NSPasteboardItem.alloc().init()
+        for t, d in data.items():
+            item.setData_forType_(d, t)
+        new.append(item)
+    pb.clearContents()
+    if new:
+        pb.writeObjects_(new)
+
+
 def insert_text(text: str):
     if args.no_insert:
         log(f"  [no-insert] paste {text!r}")
@@ -595,7 +625,7 @@ def insert_text(text: str):
     if args.type:
         warn_once("untypable", "  pasting instead of typing: the text has characters pynput cannot type")
     pb = NSPasteboard.generalPasteboard()
-    old = pb.stringForType_(NSPasteboardTypeString)
+    old = pasteboard_snapshot(pb)
     pb.clearContents()
     ok = pb.setString_forType_(text, NSPasteboardTypeString)
     time.sleep(0.03)
@@ -605,9 +635,8 @@ def insert_text(text: str):
         fa = NSWorkspace.sharedWorkspace().frontmostApplication()
         log(f"  paste: set={ok} front={fa.localizedName() if fa else None} pb={pb.stringForType_(NSPasteboardTypeString)!r:.40}")
     time.sleep(0.3)
-    if old is not None:
-        pb.clearContents()
-        pb.setString_forType_(old, NSPasteboardTypeString)
+    if old:
+        pasteboard_restore(pb, old)
 
 
 def ding(name):
