@@ -393,7 +393,10 @@ async def stream(ws: WebSocket):
                 task = asyncio.create_task(s.stop())
                 finals.add(task); task.add_done_callback(finals.discard)
             elif t == "cancel" and session:
-                session.cancel(); session = None
+                session.cancel()
+                log.info("session %s cancelled after %.1fs of audio", session.id, session.n / SR)
+                await send({"type": "cancelled", "id": session.id})
+                session = None
             elif t == "ping":
                 await send({"type": "pong"})
     except WebSocketDisconnect:
