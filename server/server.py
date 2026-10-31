@@ -28,6 +28,7 @@ AUTO_SILENCE_MS = 850            # hands-free: finalize after this much trailing
 AUTO_MIN_SPEECH_MS = 400         # ...but only if we heard at least this much speech
 AUTO_MAX_SEGMENT_S = 40          # hands-free: force a cut at the next short pause past this
 MAX_BUFFER_S = 600
+IDLE_TIMEOUT_S = 20              # a session with no audio for this long has lost its client
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
 log = logging.getLogger("dictate")
@@ -196,6 +197,7 @@ class Session:
         self.win_start = 0                    # sample index where the live window begins
         self.t_start = time.time()
         self.t_last_partial = 0.0
+        self.t_last_audio = self.t_start
         self.closed = False
         self.vad = None
         self.vad_pending: list[np.ndarray] = []
@@ -210,6 +212,7 @@ class Session:
         x = pcm16_to_f32(raw)
         self.chunks.append(x)
         self.n += len(x)
+        self.t_last_audio = time.time()
         if self.mode == "auto":
             self.vad_pending.append(x)
 
@@ -229,6 +232,9 @@ class Session:
         try:
             while not self.closed:
                 await asyncio.sleep(0.03)
+                if time.time() - self.t_last_audio > IDLE_TIMEOUT_S:
+                    await self._abandon()
+                    return
                 if self.mode == "auto" and self.vad is not None and self.vad_pending:
                     pend, self.vad_pending = self.vad_pending, []
                     await asyncio.to_thread(self._vad_feed, pend)
@@ -336,8 +342,21 @@ class Session:
                          "audio_s": round(len(buf) / SR, 2),
                          "timings": {"asr_ms": round(asr_ms), "llm_ms": round(fmt["llm_ms"]), "server_ms": round(total)}})
 
+    async def _abandon(self):
+        """The client streams audio continuously while a session is open, silence included, so
+        none for IDLE_TIMEOUT_S means it is gone (lid closed, tunnel dropped) while the websocket
+        still looks open from here. Stop buffering instead of holding audio until MAX_BUFFER_S."""
+        self.closed = True
+        log.warning("session %s: no audio for %ds, closing it (%.1fs buffered)",
+                    self.id, IDLE_TIMEOUT_S, self.n / SR)
+        self.chunks = []
+        await self.send({"type": "final", "id": self.id, "segment": self.seg + 1, "text": "", "raw": "",
+                         "audio_s": round(self.n / SR, 2), "error": f"no audio for {IDLE_TIMEOUT_S}s, session closed"})
+
     # -- end of session
     async def stop(self):
+        if self.closed:
+            return                            # already abandoned; its final has been sent
         self.closed = True
         self.task.cancel()
         try:
