@@ -199,6 +199,8 @@ class Session:
         self.t_last_partial = 0.0
         self.t_last_audio = self.t_start
         self.capped = False                   # hit MAX_BUFFER_S; logged once
+        self.bytes_in = 0                     # for the summary line at stop
+        self.n_finals = 0
         self.closed = False
         self.vad = None
         self.vad_pending: list[np.ndarray] = []
@@ -218,6 +220,7 @@ class Session:
         x = pcm16_to_f32(raw)
         self.chunks.append(x)
         self.n += len(x)
+        self.bytes_in += len(raw)
         self.t_last_audio = time.time()
         if self.mode == "auto":
             self.vad_pending.append(x)
@@ -318,6 +321,7 @@ class Session:
         await self._emit_final(buf, reuse=None, segment=self.seg)
 
     async def _emit_final(self, buf: np.ndarray, reuse: str | None, segment: int):
+        self.n_finals += 1
         try:
             await self._emit_final_inner(buf, reuse, segment)
         except Exception as e:
@@ -372,6 +376,9 @@ class Session:
         buf = self._buffer()
         reuse = self.partial_text if (self.n_transcribed == self.n and self.n > 0) else None
         await self._emit_final(buf, reuse=reuse, segment=self.seg + 1)
+        log.info("session %s done: %.1fs, %s, %d KB in, %d partials, %d finals, final %s partial text",
+                 self.id, time.time() - self.t_start, self.mode, self.bytes_in // 1024, self.seq, self.n_finals,
+                 "reused" if reuse is not None else "re-ran ASR instead of")
 
     def cancel(self):
         self.closed = True
