@@ -463,6 +463,22 @@ def type_keys(kb, s: str):
         kb.type(s[k:k + KEY_BURST])
 
 
+def untypable(s: str) -> bool:
+    """pynput builds each key event with the character's Python length, which is one for an
+    emoji that is two UTF-16 units, so anything outside the BMP comes out garbled or empty.
+    Such text has to be pasted."""
+    return any(ord(c) > 0xFFFF for c in s)
+
+
+_warned: set = set()
+
+
+def warn_once(key, msg):
+    if key not in _warned:
+        _warned.add(key)
+        log(msg)
+
+
 def common_prefix_len(a: str, b: str) -> int:
     n = min(len(a), len(b))
     i = 0
@@ -482,8 +498,9 @@ class LiveText:
     STABLE = 40     # chars before the live tail that partials may not rewrite; the final still can
     ANCHOR = 24     # chars of stable text used to re-align a revised transcript
 
-    def __init__(self, kb):
+    def __init__(self, kb, paste=None):
         self.kb = kb
+        self.paste = paste      # for text the keyboard cannot type; insert_text when None
         self.text = ""
 
     def reset(self):
@@ -504,6 +521,10 @@ class LiveText:
             return
         if args.no_insert:
             log(f"  [no-insert] type {s!r}")
+            return
+        if untypable(s):
+            warn_once("untypable", "  pasting instead of typing: the text has characters pynput cannot type")
+            (self.paste or insert_text)(s)
             return
         type_keys(self.kb, s)
 
@@ -568,9 +589,11 @@ def insert_text(text: str):
     if args.no_insert:
         log(f"  [no-insert] paste {text!r}")
         return
-    if args.type:
+    if args.type and not untypable(text):
         type_keys(kb, text)
         return
+    if args.type:
+        warn_once("untypable", "  pasting instead of typing: the text has characters pynput cannot type")
     pb = NSPasteboard.generalPasteboard()
     old = pb.stringForType_(NSPasteboardTypeString)
     pb.clearContents()

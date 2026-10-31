@@ -121,6 +121,14 @@ def main():
     kb = FakeKb(); client.type_keys(kb, "")
     assert kb.events == []
 
+    # Characters pynput cannot type (outside the BMP) are pasted, and still tracked as typed.
+    assert client.untypable("ok \U0001F44D") and not client.untypable("caf\u00e9 \u2014 \u20ac")
+    pasted = []; kb = FakeKb(); lt = client.LiveText(kb, paste=pasted.append)
+    lt.update("sounds good \U0001F44D")
+    assert pasted == ["sounds good \U0001F44D"] and kb.events == [], (pasted, kb.events)
+    lt.update("sounds good \U0001F44D see you")
+    assert kb.events == ["type: see you"] and lt.text == "sounds good \U0001F44D see you", kb.events
+
     assert client.common_prefix_len("abc", "abd") == 2
     assert client.common_prefix_len("", "x") == 0
     print("live_text_test: ok")
