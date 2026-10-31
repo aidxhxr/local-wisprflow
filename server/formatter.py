@@ -263,6 +263,11 @@ def _postprocess(out: str, transcript: str, selected: str) -> str:
     return out
 
 
+# Spoken commands after which the output length no longer tracks the transcript length.
+_EDIT_CMDS = re.compile(r"scratch that|delete that|strike that|never ?mind"
+                        r"|new line|new paragraph|bullet|numbered list|number one", re.I)
+
+
 # ---------------------------------------------------------------- public API
 class Formatter:
     def __init__(self):
@@ -321,8 +326,9 @@ class Formatter:
                 log.warning("llm added code syntax in code context, using raw")
                 result["llm_ms"] = ms
                 return result
-            # Sanity guard: the model should not balloon or collapse plain dictation.
-            cmdish = re.search(r"scratch that|delete that|strike that|never ?mind", transcript, re.I) or selected
+            # Sanity guard: the model should not balloon or collapse plain dictation. Editing and
+            # layout commands legitimately change the length, so they switch the guard off.
+            cmdish = _EDIT_CMDS.search(transcript) or selected
             if not cmdish and len(raw) > 40 and not (0.35 <= len(out) / len(raw) <= 2.5):
                 log.warning("llm output length suspicious (%d vs %d), using raw", len(out), len(raw))
                 result["llm_ms"] = ms

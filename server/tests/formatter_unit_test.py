@@ -165,6 +165,28 @@ def test_format():
     eq(r["category"], "terminal", "category derived from the bundle when not given")
 
 
+def test_length_guard():
+    prose = "so I was thinking we could maybe ship the new version on monday and do the announcement on friday"
+    r, _ = run_format(prose, {"category": "other"}, "Ship Monday.")
+    eq(r["used_llm"], False, "collapsed plain dictation falls back to raw")
+    r, _ = run_format(prose, {"category": "other"}, prose * 3)
+    eq(r["used_llm"], False, "ballooned plain dictation falls back to raw")
+    r, _ = run_format(prose, {"category": "other"}, "So I was thinking we could maybe ship the new version on Monday "
+                      "and do the announcement on Friday.")
+    eq(r["used_llm"], True, "ordinary formatting passes")
+    r, _ = run_format("yeah I'm down for tonight. scratch that. actually I can't make it", {"category": "chat"},
+                      "Actually I can't make it")
+    eq(r["used_llm"], True, "'scratch that' may shorten the output a lot")
+    r, _ = run_format("things to buy colon bullet milk bullet eggs bullet coffee beans new paragraph call the dentist",
+                      {"category": "document"}, "Buy:\n- Milk\n- Eggs")
+    eq(r["used_llm"], True, "dictated bullets and paragraphs switch the guard off")
+    r, _ = run_format("step one numbered list open the app number one tap settings", {"category": "document"},
+                      "1. Open\n2. Tap")
+    eq(r["used_llm"], True, "numbered list switches the guard off")
+    r, _ = run_format("a" * 50, {"category": "other", "selected_text": "some selection"}, "x")
+    eq(r["used_llm"], True, "editing a selection switches the guard off")
+
+
 def test_retry():
     formatter.RETRY_DELAY_S = 0
     conn = httpx.ConnectError("refused")
