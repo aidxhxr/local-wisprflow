@@ -47,7 +47,7 @@ HALLUCINATION_MIN_SPEECH_MS = 250   # a lone HALLUCINATIONS word needs this much
 
 # ------------------------------------------------------------------ ASR
 def load_model():
-    global _model
+    global _model, _load_s, _t_ready
     import nemo.collections.asr as nemo_asr
     t0 = time.time()
     m = nemo_asr.models.ASRModel.from_pretrained(MODEL_NAME, map_location="cuda")
@@ -60,7 +60,19 @@ def load_model():
     _vad.reset()
     global _vad_check
     _vad_check = VAD()
-    log.info("model %s ready in %.1fs", MODEL_NAME, time.time() - t0)
+    _load_s, _t_ready = time.time() - t0, time.time()
+    log.info("model %s ready in %.1fs", MODEL_NAME, _load_s)
+
+
+def _gpu_mem() -> dict:
+    """Used/free/total device memory in MB, as nvidia-smi would show it (all processes, so vLLM's
+    share is included). Empty if CUDA is unavailable."""
+    try:
+        free, total = torch.cuda.mem_get_info()
+    except Exception:
+        return {}
+    mb = 1024 * 1024
+    return {"used_mb": (total - free) // mb, "free_mb": free // mb, "total_mb": total // mb}
 
 
 def _is_fatal_cuda(e: BaseException) -> bool:
@@ -143,17 +155,22 @@ def drop_if_hallucinated(text: str, audio: np.ndarray) -> str:
 
 # ------------------------------------------------------------------ HTTP
 _last_probe = 0.0
+_load_s = 0.0          # how long the model took to load; 0 until it is up
+_t_ready = 0.0         # when it came up
 PROBE_INTERVAL_S = 60
 
 
 @app.get("/health")
 async def health():
-    """Green only if the model actually runs: at most once a minute, push silence through it."""
+    """Green only if the model actually runs: at most once a minute, push silence through it.
+    Also carries what a diagnostic run wants: GPU memory, load time and uptime."""
     global _last_probe
     if _model is not None and time.time() - _last_probe > PROBE_INTERVAL_S:
         _last_probe = time.time()
         await asyncio.to_thread(_probe_cuda)
-    return {"ok": _model is not None, "model": MODEL_NAME, "llm": await _fmt.health()}
+    return {"ok": _model is not None, "model": MODEL_NAME, "llm": await _fmt.health(),
+            "gpu": _gpu_mem(), "load_s": round(_load_s, 1),
+            "uptime_s": round(time.time() - _t_ready) if _t_ready else 0}
 
 
 @app.post("/transcribe")
