@@ -1,0 +1,46 @@
+#!/bin/zsh
+# Run the client in a detached tmux session named "dictate" so it outlives the terminal.
+#
+#   scripts/dictate-tmux [client flags...]   start it, or attach if it is already running
+#   scripts/dictate-tmux log                 print the client's last screen of output
+#   scripts/dictate-tmux stop                kill the session, and the client with it
+#
+# Client flags pass straight through: scripts/dictate-tmux --mic builtin --key f18
+# DICTATE_SSH comes from the environment. When it is missing (launchd, cron, a tmux server
+# started before ~/.zshrc defined it) it is read from an interactive login zsh, the only
+# kind that sources ~/.zshrc. DICTATE_TMUX_SESSION overrides the session name.
+set -eu
+repo=${0:A:h:h}
+session=${DICTATE_TMUX_SESSION:-dictate}
+
+case ${1:-} in
+  log)  exec tmux capture-pane -p -t "$session" ;;
+  stop)
+    if tmux kill-session -t "$session" 2>/dev/null; then echo "stopped"; else echo "not running"; fi
+    exit 0 ;;
+  -h|--help|help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+esac
+
+if tmux has-session -t "$session" 2>/dev/null; then
+  [[ -t 0 ]] && exec tmux attach -t "$session"
+  echo "already running: tmux attach -t $session"; exit 0
+fi
+
+if [[ -z ${DICTATE_SSH:-} ]]; then
+  export DICTATE_SSH=$(zsh -lic 'print -rn -- "$DICTATE_SSH"' 2>/dev/null </dev/null)
+fi
+if [[ -z $DICTATE_SSH ]]; then
+  print -u2 "dictate-tmux: DICTATE_SSH is not set (export it in ~/.zshrc)"; exit 2
+fi
+
+# Restart after a crash; stop on a clean exit (Ctrl-C, 0) or a setup error (no venv or host, 2).
+# The pane stays open afterwards so the last lines are still readable with `log`.
+cmd="cd ${(q)repo}
+while true; do
+  ./dictate ${(j: :)${(q)@}}; rc=\$?
+  [[ \$rc == 0 || \$rc == 2 ]] && break
+  echo \"dictate exited with \$rc; restarting in 5 s (Ctrl-C to stop)\"; sleep 5
+done
+echo \"dictate stopped (exit \$rc); press Enter to close\"; read -r"
+tmux new-session -d -s "$session" -c "$repo" -e "DICTATE_SSH=$DICTATE_SSH" -- /bin/zsh -c "$cmd"
+echo "started in tmux session '$session'. Watch: scripts/dictate-tmux log · attach: tmux attach -t $session"
