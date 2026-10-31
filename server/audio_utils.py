@@ -5,15 +5,18 @@ import numpy as np
 
 SR = 16000
 
-# What Parakeet produces from breath, keyboard clatter or near-silence: a lone short word.
-# A lone one of these is only believed if the VAD also heard speech.
-HALLUCINATIONS = {"okay", "ok", "yeah", "yes", "yep", "no", "hmm", "mm", "mhm", "huh", "uh", "um", "oh", "so",
-                  "you", "the", "and", "bye", "thanks", "thank you", "i", "a", "right", "well"}
+# What Parakeet produces from breath, keyboard clatter or near-silence: a lone short word or
+# one of the stock phrases every ASR model learned from subtitle data. The whole transcript
+# must be one of these, and it is only believed if the VAD also heard speech.
+HALLUCINATIONS = {"okay", "ok", "yeah", "yes", "yep", "nope", "no", "hmm", "mm", "mhm", "huh", "uh", "um", "oh",
+                  "so", "you", "the", "and", "bye", "thanks", "thank you", "i", "a", "right", "well", "sure",
+                  "alright", "all right", "what", "oh okay", "okay okay", "the end", "subtitles by",
+                  "thanks for watching", "thank you for watching"}
 
 
 def looks_hallucinated(text: str) -> bool:
     words = "".join(c for c in text.lower() if c.isalpha() or c == " ").split()
-    return len(words) <= 2 and " ".join(words) in HALLUCINATIONS
+    return " ".join(words) in HALLUCINATIONS
 
 
 def pcm16_to_f32(raw: bytes) -> np.ndarray:
