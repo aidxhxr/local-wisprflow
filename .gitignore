@@ -1,4 +1,11 @@
-.venv/
+# Python
 __pycache__/
+*.pyc
+
+# virtualenvs: ./.venv on the Mac, server/.venv and ~/vllm-env on the GPU box
+.venv
+server/.venv
+
+# local noise
 *.log
 .DS_Store
