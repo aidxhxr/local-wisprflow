@@ -26,7 +26,9 @@ export DICTATE_SSH=user@gpu-box        # put this in ~/.zshrc
 ## Use
 
 ```
-./dictate                               # or the absolute path to the launcher in this repo
+./dictate                               # in a terminal; Ctrl-C quits
+scripts/dictate-tmux                    # same, detached in a tmux session ("log" / "stop" subcommands)
+scripts/install-launchagent.sh          # at login, no terminal; read Permissions below first
 ```
 
 | Gesture | What happens |
@@ -50,8 +52,18 @@ Turn it off with `--no-live` or `DICTATE_LIVE=0` if an app fights synthetic keys
 popups, smart quotes); you then get the old behaviour of a single insert on release.
 
 Flags: `--key cmd_r|ctrl_r|shift_r|f13|f18|f19`, `--quiet` (no sounds), `--no-overlay`, `--no-live`,
-`--type` (type the final instead of pasting), `--fake-audio clip.wav` (smoke test, no hotkey needed),
+`--type` (type the final instead of pasting), `--mic default|builtin|<name>` (see below),
+`--doctor` (check mic and permissions, then exit), `--fake-audio clip.wav` (smoke test, no hotkey needed),
 `--no-insert` (log instead of typing; for testing).
+
+### Microphone
+
+By default the client records from whatever macOS currently uses as input, re-checked on every press,
+so AirPods put on after launch are picked up. A Bluetooth headset's mic flips the headset into the
+hands-free profile while recording (music pauses, the switch takes about a second), and some headsets
+deliver plain silence in that mode. `--mic builtin` (or `DICTATE_MIC=builtin`) records from the Mac's
+own microphone and leaves the headphones in music mode; `--mic <part of a device name>` picks a
+specific device.
 
 ## What the formatter does
 
@@ -73,7 +85,46 @@ Runs on every dictation, in ~100 ms, with n-gram speculative decoding (formattin
 
 ## Permissions (one time, System Settings → Privacy & Security)
 
-Grant to the terminal app you launch from: **Microphone**, **Accessibility**, **Input Monitoring**. Restart the terminal after granting.
+**Microphone**, **Accessibility** and **Input Monitoring**. macOS keys each grant on the process that
+launched the client, so what you grant depends on how you run it:
+
+- `./dictate` or `scripts/dictate-tmux` from a terminal: grant all three to the terminal app (Terminal,
+  iTerm2, Ghostty, the IDE's terminal) and restart it afterwards. The most common reason the hotkey does
+  nothing is a terminal that was not restarted after the grant.
+- LaunchAgent: there is no terminal. launchd runs `.venv/bin/python` directly, so the grants belong to the
+  python binary behind that symlink (`readlink -f .venv/bin/python`; the install script prints it). The
+  Microphone prompt appears on the first recording. Accessibility and Input Monitoring never prompt: press
+  "+" under each list, Cmd-Shift-G, paste the path, then `launchctl kickstart -k gui/$(id -u)/com.local-wisprflow.dictate`.
+  With a uv-managed Python the file is `~/.local/share/uv/python/cpython-3.12.*/bin/python3.12`. With
+  Homebrew's it sits inside `.../Frameworks/Python.framework/Versions/3.12/`; that layout is unverified
+  here, and if the hotkey stays dead after adding `bin/python3.12`, add the `Resources/Python.app` bundle
+  from the same directory instead.
+
+The LaunchAgent route has been linted and dry-run but not yet exercised through a full login on a real
+machine; if it misbehaves, `scripts/uninstall-launchagent.sh` and fall back to `scripts/dictate-tmux`.
+
+## Daily use / when it stops working
+
+Three checks, in this order:
+
+```
+scripts/status.sh            # client, tunnel, ssh, both services, /health, vLLM, GPU memory; non-zero if anything is down
+./dictate --doctor           # inside the client: input device, levels, macOS permissions
+scripts/dictate-tmux log     # what the client last said (tmux attach -t dictate for the live view)
+```
+
+The causes seen so far, most frequent first:
+
+| Symptom | Cause / fix |
+|---|---|
+| Nothing happens on the hotkey, no pill | The client is not running (terminal closed, Mac rebooted). `scripts/dictate-tmux` or the LaunchAgent. If it is running: permissions, see above. |
+| Pill listens, transcript stays empty | A Bluetooth headset is the system input and its mic delivers silence. `--mic builtin`, or pick the mic in the macOS Sound settings. `./dictate --doctor` shows the level. |
+| `server not reachable on the tunnel` at start | `ssh -o BatchMode=yes $DICTATE_SSH true` fails: key not loaded (`ssh-add`, or `ssh-add --apple-use-keychain` for a passphrase key), box off, or `dictate.service` down. `scripts/status.sh` says which. |
+| `port 8765 is held by another ssh process` | A previous client's tunnel outlived it. `pkill -f 'ssh -N.*8765'` and start again. |
+| Raw transcript inserted, no formatting | vLLM down or slower than 3 s. `scripts/status.sh` checks 8766; `journalctl --user -u dictate-llm` on the box. |
+| Live text garbled in one app | Autocomplete or smart quotes fighting the keystrokes. `--no-live` for that workflow. |
+| Live text stops mid-sentence | You switched apps; the client stops typing on purpose and pastes the final into the new app. |
+| `Server error: ... CUDA error` | Sticky CUDA fault on the box; the server exits and systemd restarts it in ~15 s. Repeats: `nvidia-smi`, `journalctl --user -u dictate`. |
 
 ## Server (GPU box)
 
@@ -106,6 +157,11 @@ Models can be swapped via `Environment=` in `~/.config/systemd/user/dictate*.ser
 client.py                 macOS client: hotkey, mic, overlay, app context, paste
 dictate                   launcher
 requirements-client.txt   Mac client deps
+scripts/dictate-tmux      run the client detached in tmux (log / stop)
+scripts/status.sh         one-screen health check, Mac side and GPU box
+scripts/*-launchagent.sh  install / remove the login LaunchAgent
+launchd/                  LaunchAgent plist template (placeholders filled by the install script)
+tests/live_text_test.py   client unit test for the live-text diff
 server/server.py          streaming ASR server
 server/formatter.py       LLM formatting
 server/vad.py             voice activity detection
