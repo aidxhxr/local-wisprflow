@@ -2,8 +2,9 @@
 output post-processing and prompt assembly. No LLM, GPU or network needed; only httpx must be
 importable. Run anywhere: python server/tests/formatter_unit_test.py
 """
-import os, sys
+import asyncio, logging, os, sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+import httpx  # noqa: E402
 import formatter  # noqa: E402
 from formatter import categorize, clean, _postprocess, _user_msg  # noqa: E402
 
@@ -98,6 +99,49 @@ def test_timeout():
        "selected text counts too")
 
 
+class FakeClient:
+    """Stands in for httpx.AsyncClient: raises the queued exceptions first, then answers `reply`."""
+    def __init__(self, reply, errors=()):
+        self.reply, self.errors, self.calls = reply, list(errors), []
+
+    async def post(self, url, json, timeout):
+        self.calls.append((json, timeout))
+        if self.errors:
+            raise self.errors.pop(0)
+        return httpx.Response(200, json={"choices": [{"message": {"content": self.reply}}]},
+                              request=httpx.Request("POST", url))
+
+
+def run_format(transcript, context, reply, errors=()):
+    f = formatter.Formatter()
+    f.client = FakeClient(reply, errors)
+    return asyncio.run(f.format(transcript, context)), f.client
+
+
+def test_format():
+    r, c = run_format("um hello there", {"category": "chat", "app": "Slack"}, "Hello there")
+    eq((r["text"], r["raw"], r["used_llm"], r["category"]), ("Hello there", "Hello there", True, "chat"),
+       "formatted output used")
+    eq(c.calls[0][0]["messages"][-1]["content"].endswith("transcript:\n<<<\num hello there\n>>>"), True,
+       "untouched transcript goes to the model")
+    eq(c.calls[0][1], formatter._timeout_for("um hello there"), "scaled timeout passed per request")
+    r, _ = run_format("um. uh", {"category": "other"}, "SHOULD NOT BE CALLED")
+    eq((r["text"], r["used_llm"]), ("", False), "filler-only transcript skips the LLM")
+    r, _ = run_format("hello", {"bundle": "com.apple.Terminal", "title": "zsh"}, "hello")
+    eq(r["category"], "terminal", "category derived from the bundle when not given")
+
+
+def test_retry():
+    formatter.RETRY_DELAY_S = 0
+    conn = httpx.ConnectError("refused")
+    r, c = run_format("hello there", {"category": "other"}, "Hello there.", errors=[conn])
+    eq((r["text"], r["used_llm"], len(c.calls)), ("Hello there.", True, 2), "one retry after a connection error")
+    r, c = run_format("hello there", {"category": "other"}, "Hello there.", errors=[conn, conn])
+    eq((r["text"], r["used_llm"], len(c.calls)), ("Hello there", False, 2), "second failure falls back to raw")
+    r, c = run_format("hello there", {"category": "other"}, "Hello there.", errors=[httpx.ReadTimeout("slow")])
+    eq((r["text"], r["used_llm"], len(c.calls)), ("Hello there", False, 1), "no retry on a timeout")
+
+
 def test_messages():
     msgs = formatter._messages("chat", "Slack", "#eng", "", "hello")
     eq(msgs[0]["role"], "system", "system first")
@@ -109,6 +153,7 @@ def test_messages():
 
 
 def main():
+    logging.disable(logging.WARNING)   # the fallback paths log on purpose
     for name, fn in sorted(globals().items()):
         if name.startswith("test_") and callable(fn):
             fn()

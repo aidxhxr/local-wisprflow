@@ -3,7 +3,7 @@
 Talks to a local vLLM OpenAI-compatible server. Falls back to a light regex cleanup
 if the LLM is unavailable or slow, so dictation never blocks on it.
 """
-import logging, os, re, time
+import asyncio, logging, os, re, time
 import httpx
 
 log = logging.getLogger("dictate.fmt")
@@ -14,6 +14,7 @@ LLM_TIMEOUT = float(os.environ.get("DICTATE_LLM_TIMEOUT", "3.0"))
 # Extra second of timeout per this many characters of input: formatting is mostly copying, so
 # the output grows with the transcript (and the selection) and a long dictation needs longer.
 _TIMEOUT_CHARS_PER_S = 300
+RETRY_DELAY_S = 0.25   # pause before the single retry of a failed connection
 
 
 def _timeout_for(transcript: str, selected: str = "") -> float:
@@ -232,6 +233,20 @@ class Formatter:
             self.available = False
         return self.available
 
+    async def _post(self, payload: dict, timeout: float) -> httpx.Response:
+        """One retry on a connection-level failure (vLLM restarting, socket reset), never on a timeout:
+        a slow request is already past its budget and must fall back to the raw transcript."""
+        for attempt in (0, 1):
+            try:
+                return await self.client.post(LLM_URL, json=payload, timeout=timeout)
+            except httpx.TimeoutException:
+                raise
+            except httpx.TransportError as e:
+                if attempt:
+                    raise
+                log.warning("llm connection failed (%s); retrying once", e.__class__.__name__)
+                await asyncio.sleep(RETRY_DELAY_S)
+
     async def format(self, transcript: str, context: dict | None = None) -> dict:
         """Returns {text, raw, used_llm, llm_ms, category}."""
         context = context or {}
@@ -245,7 +260,7 @@ class Formatter:
         t0 = time.time()
         try:
             max_tokens = int(len(transcript) / 3 + len(selected) / 2) + 48
-            r = await self.client.post(LLM_URL, json={
+            r = await self._post({
                 "model": LLM_MODEL,
                 "messages": _messages(category, app, context.get("title", ""), selected, transcript.strip()),
                 "temperature": 0.0,
