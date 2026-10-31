@@ -256,12 +256,19 @@ def _postprocess(out: str, transcript: str, selected: str) -> str:
     if out.endswith(">>>"):
         out = out[:-3]
     out = out.strip()
-    # Strip a wrapping quote pair the model sometimes adds.
-    if len(out) > 2 and _QUOTE_PAIRS.get(out[0]) == out[-1] and not transcript.strip().startswith(("\"", "“")):
+    # Strip a wrapping quote pair the model sometimes adds (a triple quote is a docstring, keep it).
+    if len(out) > 2 and _QUOTE_PAIRS.get(out[0]) == out[-1] and not out.startswith(('"""', "'''")) \
+            and not transcript.strip().startswith(("\"", "“")):
         out = out[1:-1].strip()
     out = "\n".join(line.rstrip() for line in out.splitlines())
     return out
 
+
+# Comment or docstring syntax at the start of LLM output in a code editor, and the spoken words
+# that make it legitimate (checked against the filler-free transcript so "um, hashtag ..." counts).
+_CODE_SYNTAX = re.compile(r"\s*(#|//|/\*|<!--|\"\"\"|''')")
+_SPOKEN_SYNTAX = re.compile(r"\s*(hash|pound|number sign|octothorpe|sharp|slash|comment|triple|open|docstring"
+                            r"|less than|angle bracket|quote)", re.I)
 
 # Spoken commands after which the output length no longer tracks the transcript length.
 _EDIT_CMDS = re.compile(r"scratch that|delete that|strike that|never ?mind"
@@ -321,8 +328,7 @@ class Formatter:
             out = _postprocess(r.json()["choices"][0]["message"]["content"], transcript, selected)
             ms = (time.time() - t0) * 1000
             # Code editors: the model sometimes "writes the comment" instead of the words. Refuse unspoken syntax.
-            if category == "code" and re.match(r"\s*(#|//|/\*|<!--|\"\"\")", out) and \
-                    not re.match(r"\s*(hash|pound|slash|comment|triple|open)", transcript, re.I):
+            if category == "code" and _CODE_SYNTAX.match(out) and not _SPOKEN_SYNTAX.match(raw):
                 log.warning("llm added code syntax in code context, using raw")
                 result["llm_ms"] = ms
                 return result

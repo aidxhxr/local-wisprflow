@@ -68,6 +68,8 @@ def test_postprocess():
     eq(_postprocess("  a line  \n  another   \n", "x", ""), "a line\n  another", "trailing whitespace per line")
     eq(_postprocess("“Hello there.”", "hello there", ""), "Hello there.", "wrapping smart quotes stripped")
     eq(_postprocess("“Hello there.", "hello there", ""), "“Hello there.", "lone opening quote stays")
+    eq(_postprocess('"""Returns the user."""', "triple quote returns the user", ""), '"""Returns the user."""',
+       "docstring quotes are not a wrapping pair")
     eq(_postprocess("<think>\nThe user wants prose.\n</think>\n\nHello there.", "hello there", ""),
        "Hello there.", "leaked think block stripped")
     eq(_postprocess("<think>\n\n</think>Hello", "hello", ""), "Hello", "empty think block stripped")
@@ -185,6 +187,26 @@ def test_length_guard():
     eq(r["used_llm"], True, "numbered list switches the guard off")
     r, _ = run_format("a" * 50, {"category": "other", "selected_text": "some selection"}, "x")
     eq(r["used_llm"], True, "editing a selection switches the guard off")
+
+
+def test_code_guard():
+    code = {"category": "code", "app": "Cursor"}
+    r, _ = run_format("add a comment that says this is a hack", code, "# this is a hack")
+    eq((r["text"], r["used_llm"]), ("Add a comment that says this is a hack", False), "unspoken '#' refused")
+    r, _ = run_format("add a comment that says this is a hack", code, "// this is a hack")
+    eq(r["used_llm"], False, "unspoken '//' refused")
+    r, _ = run_format("add a docstring", code, '"""Add a docstring."""')
+    eq(r["used_llm"], False, "unspoken docstring refused")
+    r, _ = run_format("hashtag todo fix this later", code, "# TODO fix this later")
+    eq((r["text"], r["used_llm"]), ("# TODO fix this later", True), "'hashtag' allows '#'")
+    r, _ = run_format("um, number sign include stdio", code, "#include stdio")
+    eq(r["used_llm"], True, "'number sign' after a filler allows '#'")
+    r, _ = run_format("slash slash fix me later", code, "// fix me later")
+    eq(r["used_llm"], True, "'slash slash' allows '//'")
+    r, _ = run_format("triple quote returns the user end triple quote", code, '"""Returns the user."""')
+    eq(r["used_llm"], True, "'triple quote' allows a docstring")
+    r, _ = run_format("add a comment that says this is a hack", code, "Add a comment that says this is a hack")
+    eq(r["used_llm"], True, "plain words pass")
 
 
 def test_retry():
