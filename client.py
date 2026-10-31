@@ -505,8 +505,13 @@ class LiveText:
         # Align on letters and digits only, so the flip we are ignoring cannot break the anchor.
         pos = [k for k, c in enumerate(new) if c.isalnum()]
         norm = "".join(new[k].lower() for k in pos)
-        start = max(0, sum(c.isalnum() for c in head) - len(anchor) - 40)
-        j = norm.find(anchor, start)
+        # The anchor can occur more than once ("yeah yeah yeah", "no no no"); the first match
+        # would splice the tail in too early and repeat words. Take the one nearest to where
+        # the anchor sat in our own text.
+        want = sum(c.isalnum() for c in head) - len(anchor)
+        j, k = -1, norm.find(anchor, max(0, want - 40))
+        while k >= 0 and (j < 0 or abs(k - want) < abs(j - want)):
+            j, k = k, norm.find(anchor, k + 1)
         if j < 0:
             return new                      # cannot align: real rewrite
         tail = new[pos[j + len(anchor) - 1] + 1:]

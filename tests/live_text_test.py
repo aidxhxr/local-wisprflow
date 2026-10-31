@@ -102,6 +102,18 @@ def main():
     kb = run(["hello there"], "Hello there. ")
     assert kb.events.count("bs") == len("hello there")
 
+    # A repeated phrase: the anchor occurs many times, and must align where it sat before,
+    # or the splice repeats words.
+    text = " ".join(["yeah"] * 20)
+    kb = FakeKb(); lt = client.LiveText(kb); lt.update(text); kb.events.clear()
+    lt.update("Yeah" + text[4:])                                    # case flip far back: ignored
+    assert kb.buf == text and kb.events == [], (kb.buf, kb.events)
+    lt.update("Yeah" + text[4:] + " okay")
+    assert kb.buf == text + " okay" and kb.events == ["type: okay"], (kb.buf, kb.events)
+    kb = FakeKb(); lt = client.LiveText(kb); lt.update(text); kb.events.clear()
+    lt.update("Yeah " + text)                                       # one more word, not ten
+    assert kb.buf == text + " yeah" and kb.events == ["type: yeah"], (kb.buf, kb.events)
+
     assert client.common_prefix_len("abc", "abd") == 2
     assert client.common_prefix_len("", "x") == 0
     print("live_text_test: ok")
