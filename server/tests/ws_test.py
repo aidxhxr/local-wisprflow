@@ -1,10 +1,22 @@
-"""Stream a PCM file over the /stream websocket like the client would; print partials and finals."""
+"""Stream an audio file over the /stream websocket like the client would; print partials and finals.
+
+    ws_test.py <port> <file.wav|file.pcm> [hold|auto] [speed]
+
+A .wav must be 16 kHz mono 16-bit; anything else is taken as raw little-endian int16 at 16 kHz."""
 import json, sys, time, threading, wave
 import websocket
 
 port = int(sys.argv[1]); pcm_path = sys.argv[2]; mode = sys.argv[3] if len(sys.argv) > 3 else "hold"
 speed = float(sys.argv[4]) if len(sys.argv) > 4 else 1.0
-pcm = open(pcm_path, "rb").read()
+if pcm_path.endswith(".wav"):
+    with wave.open(pcm_path, "rb") as w:
+        fmt = (w.getnchannels(), w.getsampwidth(), w.getframerate())
+        if fmt != (1, 2, 16000):
+            sys.exit(f"{pcm_path}: need 16 kHz mono 16-bit, got channels/width/rate {fmt}")
+        pcm = w.readframes(w.getnframes())
+else:
+    pcm = open(pcm_path, "rb").read()
+print(f"{len(pcm) / 32000:.1f}s of audio, mode={mode}, speed={speed}x")
 ws = websocket.create_connection(f"ws://127.0.0.1:{port}/stream")
 t0 = time.time()
 done = threading.Event()
