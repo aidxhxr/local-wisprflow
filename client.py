@@ -506,12 +506,18 @@ class FakeRecorder:
 
 
 # ====================================================================== streaming connection
+PING_S = 20     # idle ping interval; a tunnel that died quietly shows up here, not at the next hotkey press
+
+
 class Streamer:
     def __init__(self, url, on_msg):
         self.url, self.on_msg = url, on_msg
         self.q: queue.Queue = queue.Queue()
         self.ws = None
         self.connected = threading.Event()
+        self.connects = 0
+        self.ping_t = self.pong_t = 0.0
+        self.pongs = False           # this server answers pings (older ones ignore them)
         threading.Thread(target=self._conn_loop, daemon=True).start()
         threading.Thread(target=self._send_loop, daemon=True).start()
 
@@ -521,12 +527,20 @@ class Streamer:
                 ws = websocket.create_connection(self.url, timeout=10)
                 ws.settimeout(None)
                 self.ws = ws
+                self.connects += 1
+                self.ping_t = self.pong_t = 0.0
                 self.connected.set()
+                if self.connects > 1:
+                    log("stream reconnected")
                 while True:
                     m = ws.recv()
                     if not m:
                         break
-                    self.on_msg(json.loads(m))
+                    m = json.loads(m)
+                    if m.get("type") == "pong":
+                        self.pong_t, self.pongs = time.time(), True
+                        continue
+                    self.on_msg(m)
             except Exception as e:
                 if self.connected.is_set():
                     log(f"stream disconnected: {e.__class__.__name__}")
@@ -541,7 +555,11 @@ class Streamer:
 
     def _send_loop(self):
         while True:
-            item = self.q.get()
+            try:
+                item = self.q.get(timeout=PING_S)
+            except queue.Empty:
+                self._ping()
+                continue
             ws = self.ws
             if ws is None:
                 continue   # drop; session is lost anyway
@@ -552,6 +570,26 @@ class Streamer:
                     ws.send(json.dumps(item))
             except Exception as e:
                 log(f"send failed: {e.__class__.__name__}")
+
+    def _ping(self):
+        """Nothing was sent for PING_S. Ping the server; if the previous ping went unanswered the
+        connection is dead even though the socket looks fine: close it so the receive loop
+        reconnects now instead of the next session failing with 'Not connected'."""
+        ws = self.ws
+        if ws is None:
+            return
+        if self.pongs and self.ping_t and self.pong_t < self.ping_t:
+            log(f"stream stalled: no answer to ping in {PING_S}s, reconnecting")
+            try:
+                ws.close()
+            except Exception:
+                pass
+            return
+        self.ping_t = time.time()
+        try:
+            ws.send(json.dumps({"type": "ping"}))
+        except Exception as e:
+            log(f"ping failed: {e.__class__.__name__}")
 
     def send(self, item):
         self.q.put(item)
