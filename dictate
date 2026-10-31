@@ -1,3 +1,11 @@
 #!/bin/zsh
+# Launcher for the Mac client. Runs client.py from the repo's own venv.
 cd "$(dirname "$0")"
-exec .venv/bin/python client.py "$@"
+if [[ ! -x .venv/bin/python ]]; then
+  print -u2 "dictate: no venv at $PWD/.venv. Set it up first:"
+  print -u2 "  python3.12 -m venv .venv"
+  print -u2 "  .venv/bin/python -m pip install -r requirements-client.txt"
+  exit 2
+fi
+# argv[0] "dictate" so the process shows up as such in ps, Activity Monitor and `pgrep -x dictate`.
+exec -a dictate .venv/bin/python client.py "$@"
