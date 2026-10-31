@@ -209,10 +209,12 @@ class Overlay:
         self.panel.orderFrontRegardless()
 
     @on_main
-    def listening(self, where, handsfree=False, live=False):
+    def listening(self, where, handsfree=False, live=False, mic=""):
         self._show()
         self._dot(self.RED, True)
         head = "Hands-free · tap to stop" if handsfree else "Listening"
+        if mic:
+            where += " · mic: " + (mic if len(mic) <= 28 else mic[:27] + "…")
         self.title.setStringValue_(head + (" · live" if live else "") + " · " + where)
         self.text.setStringValue_("…")
 
@@ -717,6 +719,7 @@ class Dictation:
         self.held = False
         self.press_t = 0.0
         self.where = ""
+        self.mic = ""                # input device of the current session, for the pill
         self.sid = ""
         self.t_stop = 0.0
         self.out_q: queue.Queue = queue.Queue()   # partials and finals, in order, one worker
@@ -756,6 +759,7 @@ class Dictation:
                 ding("Basso")
                 return
             self.where = ctx["app"] or "?"
+            self.mic = getattr(self.rec, "last_device", None) or ""
             self.sid = f"{time.time():.3f}"
             self.streamer.send({"type": "start", "id": self.sid, "mode": "hold", "context": ctx})
             self.live.reset()
@@ -766,7 +770,7 @@ class Dictation:
             self.live_on = not args.no_live and not ctx["selected_text"]
             self.active, self.handsfree = True, False
             ding("Tink")
-            self.ov.listening(self.where, live=self.live_on)
+            self.ov.listening(self.where, live=self.live_on, mic=self.mic)
             sel = f" | selection: {ctx['selected_text'][:40]!r}" if ctx["selected_text"] else ""
             log(f"▶ {self.where} ({ctx['bundle']}) {ctx['title'][:50]!r}{sel}")
 
@@ -777,7 +781,7 @@ class Dictation:
             self.handsfree = True
             self.last_text_t = time.time()
             self.streamer.send({"type": "mode", "mode": "auto"})
-            self.ov.listening(self.where, handsfree=True, live=self.live_on)
+            self.ov.listening(self.where, handsfree=True, live=self.live_on, mic=self.mic)
             log("  hands-free on")
             threading.Timer(15, self._handsfree_watch, args=[self.sid]).start()
 
@@ -880,7 +884,7 @@ class Dictation:
         elif t == "started":
             self.where = f"{self.where} · {m.get('category')}"
             if self.active:
-                self.ov.listening(self.where, self.handsfree, live=self.live_on)
+                self.ov.listening(self.where, self.handsfree, live=self.live_on, mic=self.mic)
         elif t == "final":
             self.out_q.put(m)
 
@@ -976,9 +980,15 @@ class Dictation:
         if text:
             self.last_text_t = time.time()
         keep = self.active and self.handsfree
-        self.ov.done(text, timing, keep=keep)
+        if not text and not keep and (m.get("audio_s") or 0) > 2:
+            # Seconds of audio and not a word: a silent input (a Bluetooth headset in the wrong
+            # profile, a muted interface) is the usual reason.
+            self.ov.notice(f"Nothing heard in {m['audio_s']:.0f} s · {timing}",
+                           "Check the microphone" + (f": {self.mic}" if self.mic else ""))
+        else:
+            self.ov.done(text, timing, keep=keep)
         if keep:
-            self.ov.listening(self.where, True, live=self.live_on)
+            self.ov.listening(self.where, True, live=self.live_on, mic=self.mic)
         elif m.get("id") == self.idle_stopped:
             self.ov.notice(f"Hands-free off: nothing heard for {HANDSFREE_IDLE_S // 60} min", text)
         log(f"  {m.get('audio_s', 0):4.1f}s | {timing} | {m.get('category')} | {m.get('raw')!r} -> {text!r}")
