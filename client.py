@@ -28,6 +28,7 @@ SR = 16000
 TAP_S = 0.35
 FINAL_TIMEOUT_S = 12        # give up waiting for the server's final after this long
 FOCUS_CONFIRM_S = 0.15      # a focus change must still hold after this long to count
+HANDSFREE_IDLE_S = 300      # hands-free stops itself after this long without a spoken segment
 HOTKEYS = {"alt_r": keyboard.Key.alt_r, "alt_l": keyboard.Key.alt_l, "cmd_r": keyboard.Key.cmd_r,
            "ctrl_r": keyboard.Key.ctrl_r, "shift_r": keyboard.Key.shift_r,
            "f13": keyboard.Key.f13, "f18": keyboard.Key.f18, "f19": keyboard.Key.f19}
@@ -219,6 +220,14 @@ class Overlay:
         self.text.setStringValue_(text or "(nothing heard)")
         if not keep:
             self._hide_later(1.3)
+
+    @on_main
+    def notice(self, title, text=""):
+        self._show()
+        self._dot(self.GRAY, False)
+        self.title.setStringValue_(title)
+        self.text.setStringValue_(text)
+        self._hide_later(3.0)
 
     @on_main
     def cancelled(self):
@@ -701,6 +710,8 @@ class Dictation:
         self.final_sid = ""          # id of the last session that produced a final
         self.finals_seen: set = set()   # ids of all sessions that produced a final
         self.cancelled_sids: set = set()   # sessions the user abandoned with Escape; their finals are dropped
+        self.last_text_t = 0.0       # hands-free: when the last segment with words came back
+        self.idle_stopped = ""       # session the idle watchdog ended, to explain it when its final lands
         threading.Thread(target=self._out_loop, daemon=True).start()
 
     # -- audio sink (PortAudio thread)
@@ -743,9 +754,23 @@ class Dictation:
             if not self.active:
                 return
             self.handsfree = True
+            self.last_text_t = time.time()
             self.streamer.send({"type": "mode", "mode": "auto"})
             self.ov.listening(self.where, handsfree=True, live=self.live_on)
             log("  hands-free on")
+            threading.Timer(15, self._handsfree_watch, args=[self.sid]).start()
+
+    def _handsfree_watch(self, sid):
+        """A forgotten hands-free session keeps the GPU busy and the microphone open. End it
+        after HANDSFREE_IDLE_S without a segment that contained words."""
+        if not (self.active and self.handsfree and self.sid == sid):
+            return
+        if time.time() - self.last_text_t < HANDSFREE_IDLE_S:
+            threading.Timer(15, self._handsfree_watch, args=[sid]).start()
+            return
+        log(f"  hands-free: nothing heard for {HANDSFREE_IDLE_S // 60} min, stopping")
+        self.idle_stopped = sid
+        self.stop()
 
     def stop(self):
         with self.lock:
@@ -907,10 +932,14 @@ class Dictation:
             self.live.clear()
         if self.live_on and m.get("id") == self.sid:
             self.live_seg = (m.get("segment") or self.live_seg) + 1   # next partials start clean
+        if text:
+            self.last_text_t = time.time()
         keep = self.active and self.handsfree
         self.ov.done(text, timing, keep=keep)
         if keep:
             self.ov.listening(self.where, True, live=self.live_on)
+        elif m.get("id") == self.idle_stopped:
+            self.ov.notice(f"Hands-free off: nothing heard for {HANDSFREE_IDLE_S // 60} min", text)
         log(f"  {m.get('audio_s', 0):4.1f}s | {timing} | {m.get('category')} | {m.get('raw')!r} -> {text!r}")
 
 
