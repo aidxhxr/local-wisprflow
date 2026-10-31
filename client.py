@@ -95,6 +95,7 @@ class Tunnel:
         return self.stderr[-1] if self.stderr else ""
 
     def _loop(self):
+        delay = 2
         while not self.stop:
             # A client that just exited takes its tunnel down a moment later; wait for the port so
             # we do not fail the forward (or connect through a tunnel that is about to vanish).
@@ -103,6 +104,7 @@ class Tunnel:
                     break
                 time.sleep(0.1)
             ssh = (f"ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 "
+                   f"-o ConnectTimeout=10 -o TCPKeepAlive=yes "
                    f"-o BatchMode=yes -L {args.port}:127.0.0.1:{args.port} {args.host}")
             # Watchdog: if this client dies for any reason, the tunnel goes with it.
             script = (f"{ssh} & p=$!; trap 'kill $p 2>/dev/null; exit 0' TERM INT HUP; "
@@ -111,12 +113,19 @@ class Tunnel:
             t0 = time.time()
             self.proc = subprocess.Popen(["sh", "-c", script], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
             threading.Thread(target=self._read_stderr, args=(self.proc,), daemon=True).start()
-            self._wait_open()
+            opened = self._wait_open()
             self.proc.wait()
-            if not self.stop:
-                err = self.last_error()
-                log(f"tunnel closed after {time.time() - t0:.0f}s" + (f": {err}" if err else "") + "; reconnecting")
-                time.sleep(2)
+            if self.stop:
+                break
+            up = time.time() - t0
+            # A tunnel that held for a while gets an immediate retry; one that keeps failing
+            # (box down, auth broken) is retried at 2, 4, 8 ... 30 s instead of every 2 s.
+            if opened and up > 30:
+                delay = 2
+            err = self.last_error()
+            log(f"tunnel closed after {up:.0f}s" + (f": {err}" if err else "") + f"; retrying in {delay}s")
+            time.sleep(delay)
+            delay = min(delay * 2, 30)
 
     def _read_stderr(self, proc):
         for line in proc.stderr:
@@ -126,14 +135,15 @@ class Tunnel:
                 if args.debug:
                     log(f"  ssh: {line}")
 
-    def _wait_open(self):
+    def _wait_open(self) -> bool:
         """Log once when the forward is listening: the only sign of life `ssh -N` gives."""
         while not self.stop and self.proc.poll() is None:
             if port_listening(args.port):
                 self.opens += 1
                 log("tunnel open" if self.opens == 1 else "tunnel reopened")
-                return
+                return True
             time.sleep(0.25)
+        return False
 
     def close(self):
         self.stop = True
