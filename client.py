@@ -4,7 +4,8 @@ Hold the hotkey (default Right Option) to dictate; release to insert.
 Tap it once for hands-free mode (auto-segments on pauses); tap again to stop.
 Select text first and speak an instruction ("make this more formal") to rewrite the selection.
 """
-import argparse, atexit, json, os, queue, signal, subprocess, sys, threading, time, wave
+import argparse, atexit, json, os, queue, signal, socket, subprocess, sys, threading, time, wave
+from collections import deque
 import numpy as np
 import websocket
 from pynput import keyboard
@@ -69,12 +70,29 @@ def port_in_use_by_other_ssh() -> bool:
     return any(line.startswith("ssh") and str(os.getpid()) not in line for line in out.splitlines()[1:])
 
 
+def port_listening(port: int, timeout=0.5) -> bool:
+    try:
+        socket.create_connection(("127.0.0.1", port), timeout=timeout).close()
+        return True
+    except OSError:
+        return False
+
+
 class Tunnel:
     def __init__(self):
         self.proc, self.stop = None, False
+        self.stderr: deque = deque(maxlen=5)   # ssh's last lines: the reason it did not connect
+        self.opens = 0
 
     def start(self):
         threading.Thread(target=self._loop, daemon=True).start()
+
+    @property
+    def alive(self) -> bool:
+        return self.proc is not None and self.proc.poll() is None
+
+    def last_error(self) -> str:
+        return self.stderr[-1] if self.stderr else ""
 
     def _loop(self):
         while not self.stop:
@@ -89,10 +107,33 @@ class Tunnel:
             # Watchdog: if this client dies for any reason, the tunnel goes with it.
             script = (f"{ssh} & p=$!; trap 'kill $p 2>/dev/null; exit 0' TERM INT HUP; "
                       f"while kill -0 {os.getpid()} 2>/dev/null && kill -0 $p 2>/dev/null; do sleep 1; done; kill $p 2>/dev/null")
-            self.proc = subprocess.Popen(["sh", "-c", script], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            self.stderr.clear()
+            t0 = time.time()
+            self.proc = subprocess.Popen(["sh", "-c", script], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True)
+            threading.Thread(target=self._read_stderr, args=(self.proc,), daemon=True).start()
+            self._wait_open()
             self.proc.wait()
             if not self.stop:
+                err = self.last_error()
+                log(f"tunnel closed after {time.time() - t0:.0f}s" + (f": {err}" if err else "") + "; reconnecting")
                 time.sleep(2)
+
+    def _read_stderr(self, proc):
+        for line in proc.stderr:
+            line = line.strip()
+            if line and not line.startswith("Warning: Permanently added"):
+                self.stderr.append(line)
+                if args.debug:
+                    log(f"  ssh: {line}")
+
+    def _wait_open(self):
+        """Log once when the forward is listening: the only sign of life `ssh -N` gives."""
+        while not self.stop and self.proc.poll() is None:
+            if port_listening(args.port):
+                self.opens += 1
+                log("tunnel open" if self.opens == 1 else "tunnel reopened")
+                return
+            time.sleep(0.25)
 
     def close(self):
         self.stop = True
@@ -1013,12 +1054,22 @@ def main():
     if overlay is None:
         overlay = Overlay()
     d = Dictation(overlay)
-    if not d.streamer.connected.wait(30):
-        log("server not reachable on the tunnel. Is dictate.service running on the GPU box?")
-        if port_in_use_by_other_ssh():
-            log(f"port {args.port} is held by another ssh process: a previous client's tunnel is still up. "
-                f"Run: pkill -f 'ssh -N.*{args.port}'")
-        os._exit(1)
+    if not d.streamer.connected.wait(10):
+        log("still waiting for the tunnel ..." if tun else f"still waiting for the server on port {args.port} ...")
+        if not d.streamer.connected.wait(20):
+            log("server not reachable on the tunnel. Is dictate.service running on the GPU box?")
+            if tun:
+                if tun.opens and tun.alive:
+                    log(f"the tunnel is up; the box answered nothing on port {args.port}. "
+                        f"Run: ssh {args.host} systemctl --user status dictate")
+                else:
+                    err = tun.last_error()
+                    log("the ssh tunnel is not up" + (": " + err if err else " and ssh printed nothing")
+                        + f". Run: ssh -o BatchMode=yes {args.host} true")
+            if port_in_use_by_other_ssh() and not (tun and tun.alive):
+                log(f"port {args.port} is held by another ssh process: a previous client's tunnel is still up. "
+                    f"Run: pkill -f 'ssh -N.*{args.port}'")
+            os._exit(1)
     log("server ok. checking microphone ...")
     d.rec.check()
     listener = keyboard.Listener(on_press=d.on_press, on_release=d.on_release)
