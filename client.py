@@ -400,6 +400,7 @@ def get_context() -> dict:
 # ====================================================================== audio
 BUILTIN_MIC_HINTS = ("macbook", "built-in", "imac", "mac mini", "mac studio", "studio display")
 BLUETOOTH_HINTS = ("airpods", "beats", "bluetooth", "buds", "wh-", "wf-", "bose", "jabra", "sony")
+SILENT_RMS = 0.0005     # below this a 1 s sample is digital silence, not a quiet room
 
 
 class Recorder:
@@ -471,10 +472,32 @@ class Recorder:
         if self.stream:
             self.stream.stop(); self.stream.close(); self.stream = None
 
+    def measure(self, seconds=1.0):
+        """Record `seconds` from the chosen device; returns (device name, rms in 0..1).
+        Room tone on a working mic is ~0.002-0.01; a Bluetooth headset whose mic is not
+        actually active delivers digital silence, ~0.0001 or exactly 0."""
+        dev = self.pick_device()
+        chunks = []
+        s = self.sd.InputStream(device=dev, samplerate=SR, channels=1, dtype="int16", blocksize=1024,
+                                callback=lambda d, f, t, st: chunks.append(d.copy()))
+        s.start(); time.sleep(seconds); s.stop(); s.close()
+        x = np.concatenate(chunks).astype(np.float32) / 32768 if chunks else np.zeros(1, np.float32)
+        return self.device_name(dev), float(np.sqrt(np.mean(x * x)))
+
     def check(self):
         dev = self.pick_device()
         self.sd.check_input_settings(device=dev, samplerate=SR, channels=1)
         log(f"microphone: {self.device_name(dev)}" + ("" if dev is not None else " (system default)"))
+        try:
+            name, rms = self.measure(1.0)
+        except Exception as e:
+            log(f"  could not sample the microphone ({e.__class__.__name__}: {e}); continuing")
+            return
+        if rms < SILENT_RMS:
+            log(f"WARNING: microphone {name!r} is delivering silence (rms {rms:.5f}). Dictation will come back "
+                f"empty. If it is a Bluetooth headset, try --mic builtin; run --list-mics to see the inputs.")
+        elif args.debug:
+            log(f"  mic level ok (rms {rms:.4f})")
 
 
 class FakeRecorder:
