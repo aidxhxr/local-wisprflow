@@ -238,7 +238,8 @@ class Overlay:
         self.title.setStringValue_("Inserted" + (f" · {timing}" if timing else ""))
         self.text.setStringValue_(text or "(nothing heard)")
         if not keep:
-            self._hide_later(1.3)
+            # Long enough to read it back: a two-line result needs more than a word does.
+            self._hide_later(min(1.3 + 0.02 * len(text or ""), 4.0))
 
     @on_main
     def notice(self, title, text="", hide_after=3.0):
