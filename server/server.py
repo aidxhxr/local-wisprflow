@@ -198,6 +198,7 @@ class Session:
         self.t_start = time.time()
         self.t_last_partial = 0.0
         self.t_last_audio = self.t_start
+        self.capped = False                   # hit MAX_BUFFER_S; logged once
         self.closed = False
         self.vad = None
         self.vad_pending: list[np.ndarray] = []
@@ -207,7 +208,12 @@ class Session:
 
     # -- audio in (called from ws handler)
     def add_audio(self, raw: bytes):
-        if self.closed or self.n > MAX_BUFFER_S * SR:
+        if self.closed:
+            return
+        if self.n > MAX_BUFFER_S * SR:
+            if not self.capped:
+                self.capped = True
+                log.warning("session %s: buffer full at %ds, dropping further audio", self.id, MAX_BUFFER_S)
             return
         x = pcm16_to_f32(raw)
         self.chunks.append(x)
