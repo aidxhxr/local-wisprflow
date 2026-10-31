@@ -191,13 +191,22 @@ def clean(text: str) -> str:
     return text[0].upper() + text[1:] if text else ""
 
 
+_QUOTE_PAIRS = {'"': '"', "'": "'", "“": "”", "‘": "’"}
+_THINK = re.compile(r"<think>.*?(?:</think>|\Z)\s*", re.S)
+# The model occasionally echoes the prompt scaffolding before the answer.
+_ECHO = re.compile(r"\A(?:context:[^\n]*\n)?\s*(?:transcript|output|text):\s*(?:<<<\s*)?", re.I)
+
+
 def _postprocess(out: str, transcript: str, selected: str) -> str:
+    # Thinking is disabled in the request, but a leaked reasoning block must never be typed.
+    out = _THINK.sub("", out).strip()
+    out = _ECHO.sub("", out)
+    if out.endswith(">>>"):
+        out = out[:-3]
     out = out.strip()
     # Strip a wrapping quote pair the model sometimes adds.
-    if len(out) > 2 and out[0] == out[-1] and out[0] in "\"'“”" and not transcript.strip().startswith(("\"", "“")):
+    if len(out) > 2 and _QUOTE_PAIRS.get(out[0]) == out[-1] and not transcript.strip().startswith(("\"", "“")):
         out = out[1:-1].strip()
-    if out.lower().startswith(("output:", "text:")):
-        out = out.split(":", 1)[1].strip()
     out = "\n".join(line.rstrip() for line in out.splitlines())
     return out
 

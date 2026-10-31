@@ -59,6 +59,18 @@ def test_postprocess():
     eq(_postprocess("Output: Hello there.", "hello there", ""), "Hello there.", "'output:' label stripped")
     eq(_postprocess("text: Hello", "hello", ""), "Hello", "'text:' label stripped")
     eq(_postprocess("  a line  \n  another   \n", "x", ""), "a line\n  another", "trailing whitespace per line")
+    eq(_postprocess("“Hello there.”", "hello there", ""), "Hello there.", "wrapping smart quotes stripped")
+    eq(_postprocess("“Hello there.", "hello there", ""), "“Hello there.", "lone opening quote stays")
+    eq(_postprocess("<think>\nThe user wants prose.\n</think>\n\nHello there.", "hello there", ""),
+       "Hello there.", "leaked think block stripped")
+    eq(_postprocess("<think>\n\n</think>Hello", "hello", ""), "Hello", "empty think block stripped")
+    eq(_postprocess("<think>still reasoning when max_tokens hit", "hello", ""), "",
+       "unterminated think block is not typed")
+    eq(_postprocess("context: chat (Slack)\ntranscript:\n<<<\nHello there\n>>>", "hello there", ""),
+       "Hello there", "echoed prompt scaffolding stripped")
+    eq(_postprocess("transcript: Hello there", "hello there", ""), "Hello there", "'transcript:' label stripped")
+    eq(_postprocess("Context: I think we should go.", "context I think we should go", ""),
+       "Context: I think we should go.", "'context:' is only an echo when followed by a transcript label")
     eq(_postprocess("", "x", ""), "", "empty output")
 
 
