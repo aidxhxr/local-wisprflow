@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  Template for running the Mac client as a LaunchAgent (start at login, restart on exit).
+  Do not install this file as is: scripts/install-launchagent.sh fills in the double-underscore
+  placeholders (repo path, home, DICTATE_SSH, extra client flags) and loads it. Nothing in the
+  repo copy names a host; the real one lands only in ~/Library/LaunchAgents.
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.local-wisprflow.dictate</string>
+
+  <!-- The venv's python runs client.py directly (no shell in between), so macOS attributes
+       the Microphone / Accessibility / Input Monitoring grants to that python binary. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>__REPO__/.venv/bin/python</string>
+    <string>__REPO__/client.py</string>
+__ARGS__
+  </array>
+  <key>WorkingDirectory</key>
+  <string>__REPO__</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>DICTATE_SSH</key>
+    <string>__DICTATE_SSH__</string>
+    <key>PATH</key>
+    <string>/usr/bin:/bin:/usr/sbin:/sbin:/opt/homebrew/bin:/usr/local/bin</string>
+  </dict>
+
+  <!-- Only in a logged-in GUI session: the hotkey listener and the overlay need one. -->
+  <key>LimitLoadToSessionType</key>
+  <string>Aqua</string>
+  <key>ProcessType</key>
+  <string>Interactive</string>
+
+  <key>RunAtLoad</key>
+  <true/>
+  <key>KeepAlive</key>
+  <true/>
+  <!-- Seconds between a crash and the restart; the client itself exits on a dead tunnel. -->
+  <key>ThrottleInterval</key>
+  <integer>15</integer>
+
+  <key>StandardOutPath</key>
+  <string>__HOME__/Library/Logs/local-wisprflow.log</string>
+  <key>StandardErrorPath</key>
+  <string>__HOME__/Library/Logs/local-wisprflow.log</string>
+</dict>
+</plist>
