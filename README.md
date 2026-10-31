@@ -34,8 +34,9 @@ scripts/install-launchagent.sh          # at login, no terminal; read Permission
 | Gesture | What happens |
 |---|---|
 | **Hold** Right Option, talk, release | Your words appear at the cursor as you speak; on release they are swapped in place for the formatted version |
-| **Tap** Right Option | Hands-free: keeps listening, inserts each sentence after you pause (~0.9 s). Tap again to stop |
+| **Tap** Right Option | Hands-free: keeps listening, inserts each sentence after you pause (~0.9 s). Tap again to stop; it also stops itself after 5 minutes without speech |
 | **Select text**, then hold and say an instruction | "Make this more formal", "shorten this", "translate to Spanish" rewrites the selection |
+| **Escape** while dictating | Cancels: nothing is inserted and any live text is erased. It is global, so Escape in any app cancels |
 
 A floating pill at the bottom of the screen shows the live transcript, the app it is typing into, and timings.
 

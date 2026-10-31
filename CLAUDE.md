@@ -201,7 +201,8 @@ Without `--no-insert` it really types into the frontmost app, so only drop the f
 field is focused on purpose. Unit test for the live-text diff: `.venv/bin/python tests/live_text_test.py`.
 
 Then have the user hold Right Option, speak, release: words appear at the cursor while speaking
-and are replaced by the formatted text on release.
+and are replaced by the formatted text on release. Escape while dictating cancels the session;
+hands-free turns itself off after 5 minutes without speech (`HANDSFREE_IDLE_S` in `client.py`).
 Flags: `--key cmd_r|ctrl_r|shift_r|f13|f18|f19` (hotkey), `--quiet`, `--no-overlay`,
 `--no-live` (insert only on release; also `DICTATE_LIVE=0`),
 `--type` (type the final instead of pasting; use if an app rejects the paste),
