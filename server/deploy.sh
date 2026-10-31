@@ -5,7 +5,7 @@ set -eu
 host="${1:-${DICTATE_SSH:-}}"
 [ -n "$host" ] || { echo "usage: server/deploy.sh user@gpu-box  (or set DICTATE_SSH)" >&2; exit 2; }
 cd "$(dirname "$0")"
-scp -q server.py formatter.py vad.py requirements.txt "$host:~/dictate/"
+scp -q server.py audio_utils.py formatter.py vad.py requirements.txt "$host:~/dictate/"
 scp -q -r tests "$host:~/dictate/"
 scp -q dictate.service dictate-llm.service "$host:~/.config/systemd/user/"
 ssh "$host" 'systemctl --user daemon-reload && systemctl --user restart dictate'

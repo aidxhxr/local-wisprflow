@@ -11,6 +11,7 @@ import torch
 from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
+from audio_utils import HALLUCINATIONS, join_text, looks_hallucinated, pcm16_to_f32, quietest_point, resample
 from formatter import Formatter, clean, categorize
 from vad import VAD
 
@@ -40,12 +41,7 @@ _vad = None            # shared, warmed at startup; sessions are sequential for 
 _vad_lock = threading.Lock()
 _vad_check = None      # second instance, used only to measure speech in a finished buffer
 _vad_check_lock = threading.Lock()
-
-# What Parakeet produces from breath, keyboard clatter or near-silence: a lone short word.
-# A lone one of these is only believed if the VAD also heard speech.
-HALLUCINATIONS = {"okay", "ok", "yeah", "yes", "yep", "no", "hmm", "mm", "mhm", "huh", "uh", "um", "oh", "so",
-                  "you", "the", "and", "bye", "thanks", "thank you", "i", "a", "right", "well"}
-HALLUCINATION_MIN_SPEECH_MS = 250
+HALLUCINATION_MIN_SPEECH_MS = 250   # a lone HALLUCINATIONS word needs this much VAD speech to be believed
 
 
 # ------------------------------------------------------------------ ASR
@@ -128,11 +124,6 @@ def _asr_long(m, audio: np.ndarray) -> str:
     return text
 
 
-def looks_hallucinated(text: str) -> bool:
-    words = "".join(c for c in text.lower() if c.isalpha() or c == " ").split()
-    return len(words) <= 2 and " ".join(words) in HALLUCINATIONS
-
-
 def speech_ms(audio: np.ndarray) -> float:
     """Milliseconds of speech the VAD hears in audio (whole buffer, fresh state)."""
     with _vad_check_lock:
@@ -147,33 +138,6 @@ def drop_if_hallucinated(text: str, audio: np.ndarray) -> str:
         log.info("dropping hallucinated %r (%.1fs audio, no speech)", text, len(audio) / SR)
         return ""
     return text
-
-
-def pcm16_to_f32(raw: bytes) -> np.ndarray:
-    return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
-
-
-def _resample(x: np.ndarray, sr: int) -> np.ndarray:
-    if sr == SR:
-        return x
-    n = int(round(len(x) * SR / sr))
-    return np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x).astype(np.float32)
-
-
-def quietest_point(x: np.ndarray, lo: int, hi: int, frame: int = SR // 20) -> int:
-    """Sample index of the lowest-energy 50 ms frame in x[lo:hi]; a safe place to cut audio."""
-    lo, hi = max(0, lo), min(len(x), hi)
-    if hi - lo <= frame:
-        return hi
-    seg = x[lo:hi]
-    n = (len(seg) // frame) * frame
-    e = (seg[:n].reshape(-1, frame) ** 2).mean(axis=1)
-    return lo + int(e.argmin()) * frame + frame // 2
-
-
-def join_text(a: str, b: str) -> str:
-    a, b = a.strip(), b.strip()
-    return f"{a} {b}" if a and b else (a or b)
 
 
 # ------------------------------------------------------------------ HTTP
@@ -198,7 +162,7 @@ async def transcribe(request: Request, sr: int = Query(SR)):
     body = await request.body()
     if len(body) > MAX_BUFFER_S * sr * 2:
         return JSONResponse({"error": f"audio longer than {MAX_BUFFER_S}s"}, status_code=413)
-    pcm = _resample(pcm16_to_f32(body), sr)
+    pcm = resample(pcm16_to_f32(body), sr)
     audio_s = len(pcm) / SR
     if audio_s < 0.25:
         return {"text": "", "audio_s": audio_s, "infer_ms": 0.0}
