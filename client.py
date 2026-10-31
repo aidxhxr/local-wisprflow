@@ -222,12 +222,13 @@ class Overlay:
             self._hide_later(1.3)
 
     @on_main
-    def notice(self, title, text=""):
+    def notice(self, title, text="", hide_after=3.0):
         self._show()
         self._dot(self.GRAY, False)
         self.title.setStringValue_(title)
         self.text.setStringValue_(text)
-        self._hide_later(3.0)
+        if hide_after:
+            self._hide_later(hide_after)
 
     @on_main
     def cancelled(self):
@@ -712,7 +713,10 @@ class Dictation:
         self.cancelled_sids: set = set()   # sessions the user abandoned with Escape; their finals are dropped
         self.last_text_t = 0.0       # hands-free: when the last segment with words came back
         self.idle_stopped = ""       # session the idle watchdog ended, to explain it when its final lands
+        self._link_up = None         # last connection state the link watch saw; None until the first connect
+        self._link_shown = False     # the pill is showing "Reconnecting"
         threading.Thread(target=self._out_loop, daemon=True).start()
+        AppHelper.callAfter(self._watch_link)      # NSTimer must be created on the main thread
 
     # -- audio sink (PortAudio thread)
     def _audio(self, raw: bytes):
@@ -805,6 +809,26 @@ class Dictation:
             log(f"  no final from server after {FINAL_TIMEOUT_S}s (session {sid})")
             self.ov.error("No response from the GPU box. Check: journalctl --user -u dictate")
             ding("Basso")
+
+    # -- connection watch (main thread)
+    def _watch_link(self):
+        NSTimer.scheduledTimerWithTimeInterval_repeats_block_(2.0, True, self._link_tick)
+
+    def _link_tick(self, _timer=None):
+        """Say so in the pill when the stream drops while idle, otherwise the first sign of a
+        dead tunnel is a hotkey press that does nothing. main() reports the initial connect."""
+        up = self.streamer.connected.is_set()
+        if self._link_up is None:
+            self._link_up = True if up else None
+            return
+        if up and not self._link_up:
+            log("stream reconnected")
+            if self._link_shown:
+                self.ov.hide(); self._link_shown = False
+        elif not up and not self.active:
+            self.ov.notice("Reconnecting to the GPU box…", "Dictation is off until the stream is back", hide_after=0)
+            self._link_shown = True
+        self._link_up = up
 
     # -- hotkey (pynput thread)
     def on_press(self, key):
