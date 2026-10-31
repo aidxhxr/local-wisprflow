@@ -56,6 +56,8 @@ p.add_argument("--mic", default=os.environ.get("DICTATE_MIC", "default"),
                     "or part of a device name (or DICTATE_MIC)")
 p.add_argument("--debug", action="store_true")
 p.add_argument("--list-mics", action="store_true", help="list input devices (the system default marked *) and exit")
+p.add_argument("--doctor", action="store_true",
+               help="check ssh, the server, the microphone and permissions; print PASS/FAIL per check and exit")
 args = p.parse_args()
 if args.key not in HOTKEYS:     # argparse does not check a default (DICTATE_KEY) against choices
     p.error(f"--key/DICTATE_KEY must be one of {', '.join(sorted(HOTKEYS))}, not {args.key!r}")
@@ -1190,11 +1192,124 @@ def other_client_pids() -> list:
     return pids
 
 
+# ====================================================================== doctor
+def _ssh_run(cmd: str, timeout=20):
+    """One-shot ssh to the GPU box with the tunnel's options; (returncode, stdout, last stderr line)."""
+    r = subprocess.run(["ssh", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10", args.host, cmd],
+                       capture_output=True, text=True, timeout=timeout)
+    err = [ln for ln in r.stderr.splitlines() if ln.strip() and not ln.startswith("Warning: Permanently added")]
+    return r.returncode, r.stdout.strip(), (err[-1] if err else "")
+
+
+def doctor() -> int:
+    """Every failure this project has had, checked in one go. Returns the exit code."""
+    failed = []
+
+    def report(status, name, detail):
+        print(f"{status:<5} {name:<17} {detail}", flush=True)
+        if status == "FAIL":
+            failed.append(name)
+
+    term = os.environ.get("TERM_PROGRAM", "the terminal app you launch from")
+    perm_hint = f"System Settings → Privacy & Security, grant {term}, then quit and reopen it"
+
+    # 1. Is a client running at all? The most common "it's not working".
+    pids = sorted(set(other_client_pids()) | ({lock_holder_pid()} - {0, -1}))
+    if pids:
+        report("PASS", "client", f"running (pid {', '.join(map(str, pids))})")
+    else:
+        report("WARN", "client", "no client is running; nothing listens for the hotkey. Start ./dictate")
+
+    # 2. ssh key auth, the way the tunnel does it (BatchMode: no passphrase prompt possible).
+    if not args.host:
+        report("FAIL", "ssh", "no GPU host: set DICTATE_SSH=user@gpu-box or pass --host")
+        ssh_ok = False
+    else:
+        try:
+            rc, _, err = _ssh_run("true")
+            ssh_ok = rc == 0
+            report("PASS" if ssh_ok else "FAIL", "ssh",
+                   f"{args.host} answers" if ssh_ok else f"{err or f'ssh exited {rc}'}. "
+                   f"Fix: ssh -o BatchMode=yes {args.host} true (a passphrase key must be in ssh-agent)")
+        except subprocess.TimeoutExpired:
+            ssh_ok = False
+            report("FAIL", "ssh", f"no answer from {args.host} in 20 s")
+
+    # 3. The server on the box, asked on the box itself so it works whether or not a tunnel is up.
+    if ssh_ok:
+        try:
+            rc, out, err = _ssh_run(f"curl -s -m 5 localhost:{args.port}/health")
+            if rc == 0 and '"ok":true' in out.replace(" ", ""):
+                report("PASS", "server", f"/health on the box: {out[:120]}")
+            else:
+                report("FAIL", "server", (f"/health on the box answered {out[:120]!r}" if out else
+                                          f"nothing listens on localhost:{args.port} on the box ({err or f'curl exited {rc}'})")
+                       + f". Fix: ssh {args.host} systemctl --user status dictate dictate-llm")
+        except subprocess.TimeoutExpired:
+            report("FAIL", "server", "the health probe on the box timed out")
+    else:
+        report("SKIP", "server", "ssh failed")
+
+    # 4. The local tunnel port, if a client is up.
+    if port_listening(args.port):
+        try:
+            import urllib.request
+            body = urllib.request.urlopen(f"http://127.0.0.1:{args.port}/health", timeout=5).read().decode()
+            report("PASS" if '"ok":true' in body.replace(" ", "") else "FAIL", "tunnel", f"port {args.port}: {body[:120]}")
+        except Exception as e:
+            report("FAIL", "tunnel", f"port {args.port} is open but /health failed: {e.__class__.__name__}: {e}")
+    else:
+        report("INFO", "tunnel", f"nothing on local port {args.port} (expected while no client runs)")
+
+    # 5. Microphones and the level of the one we would record from.
+    devs = list_input_devices()
+    if not devs:
+        report("FAIL", "microphones", "no input devices")
+    else:
+        report("PASS", "microphones", "; ".join(f"[{i}] {n}{' *default' if d else ''}" for i, n, d in devs))
+        try:
+            rec = Recorder(lambda b: None)
+            dev = rec.pick_device()
+            rec.sd.check_input_settings(device=dev, samplerate=SR, channels=1)
+            name, rms = rec.measure(1.5)
+            if rms < SILENT_RMS:
+                report("FAIL", "mic level", f"{name!r} (--mic {args.mic}) delivered silence over 1.5 s (rms {rms:.5f}). "
+                       f"A Bluetooth headset whose mic is not active does this: try --mic builtin. "
+                       f"Or Microphone permission is missing: {perm_hint}")
+            elif rms < 3 * SILENT_RMS:
+                report("WARN", "mic level", f"{name!r} (--mic {args.mic}) rms {rms:.4f} over 1.5 s: very low. "
+                       f"If dictation comes back empty, try --mic builtin")
+            else:
+                report("PASS", "mic level", f"{name!r} (--mic {args.mic}) rms {rms:.4f} over 1.5 s")
+        except Exception as e:
+            report("FAIL", "mic level", f"cannot record from --mic {args.mic}: {e.__class__.__name__}: {e}")
+
+    # 6. The two permissions the hotkey and the paste need. Both are per launching app.
+    try:
+        from ApplicationServices import AXIsProcessTrusted
+        ok = bool(AXIsProcessTrusted())
+        report("PASS" if ok else "FAIL", "accessibility", "granted" if ok else f"not granted: {perm_hint} (Accessibility)")
+    except Exception as e:
+        report("SKIP", "accessibility", f"cannot query: {e.__class__.__name__}")
+    try:
+        ok = bool(Quartz.CGPreflightListenEventAccess())
+        report("PASS" if ok else "FAIL", "input monitoring", "granted" if ok else f"not granted: {perm_hint} (Input Monitoring)")
+    except AttributeError:
+        report("SKIP", "input monitoring", "CGPreflightListenEventAccess not available in this pyobjc; check it by hand")
+    except Exception as e:
+        report("SKIP", "input monitoring", f"cannot query: {e.__class__.__name__}")
+
+    print(("all checks passed" if not failed else f"FAILED: {', '.join(failed)}"), flush=True)
+    return 1 if failed else 0
+
+
 # ====================================================================== main
 def main():
     if args.list_mics:
         print_input_devices()
         return
+    if args.doctor:
+        os._exit(doctor())
     if not args.fake_audio:     # smoke tests may run next to a live client (they use its tunnel)
         others = other_client_pids()
         locked = acquire_instance_lock()
