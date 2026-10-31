@@ -114,6 +114,13 @@ def main():
     lt.update("Yeah " + text)                                       # one more word, not ten
     assert kb.buf == text + " yeah" and kb.events == ["type: yeah"], (kb.buf, kb.events)
 
+    # Long runs of keystrokes go out in bursts of KEY_BURST characters.
+    kb = FakeKb(); client.type_keys(kb, "a" * 100)
+    assert kb.buf == "a" * 100
+    assert len(kb.events) == 5 and all(len(e) - len("type:") <= client.KEY_BURST for e in kb.events), kb.events
+    kb = FakeKb(); client.type_keys(kb, "")
+    assert kb.events == []
+
     assert client.common_prefix_len("abc", "abd") == 2
     assert client.common_prefix_len("", "x") == 0
     print("live_text_test: ok")

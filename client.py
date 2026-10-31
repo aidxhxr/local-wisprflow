@@ -449,6 +449,18 @@ class Streamer:
 
 # ====================================================================== output
 kb = keyboard.Controller()
+KEY_BURST = 24          # synthetic keystrokes sent back to back ...
+KEY_PAUSE_S = 0.005     # ... before this pause, so a busy app's event queue keeps up
+
+
+def type_keys(kb, s: str):
+    """Type `s` in short bursts. pynput posts one event per character as fast as the loop runs;
+    apps that handle keystrokes on a busy main thread (chat clients, editors with autocomplete)
+    drop or reorder a long burst, and a dropped backspace leaves a stray character behind."""
+    for k in range(0, len(s), KEY_BURST):
+        if k:
+            time.sleep(KEY_PAUSE_S)
+        kb.type(s[k:k + KEY_BURST])
 
 
 def common_prefix_len(a: str, b: str) -> int:
@@ -482,7 +494,9 @@ class LiveText:
             if n:
                 log(f"  [no-insert] backspace x{n}")
             return
-        for _ in range(n):
+        for k in range(n):
+            if k and k % KEY_BURST == 0:
+                time.sleep(KEY_PAUSE_S)
             self.kb.tap(keyboard.Key.backspace)
 
     def _type(self, s):
@@ -491,7 +505,7 @@ class LiveText:
         if args.no_insert:
             log(f"  [no-insert] type {s!r}")
             return
-        self.kb.type(s)
+        type_keys(self.kb, s)
 
     def _splice_stable(self, new: str) -> str:
         """ASR re-transcribes the whole window, so it keeps changing 'No wait' to 'no wait' or a
@@ -555,7 +569,7 @@ def insert_text(text: str):
         log(f"  [no-insert] paste {text!r}")
         return
     if args.type:
-        kb.type(text)
+        type_keys(kb, text)
         return
     pb = NSPasteboard.generalPasteboard()
     old = pb.stringForType_(NSPasteboardTypeString)
