@@ -33,7 +33,8 @@ _BUNDLES = {
                  "com.tabby"],
     "chat": ["com.apple.MobileSMS", "com.tinyspeck.slackmacgap", "com.hnc.Discord", "ru.keepcoder.Telegram",
              "org.telegram.desktop", "net.whatsapp.WhatsApp", "com.facebook.archon", "com.microsoft.teams",
-             "com.microsoft.teams2", "us.zoom.xos", "com.signal.Signal", "org.whispersystems.signal-desktop"],
+             "com.microsoft.teams2", "us.zoom.xos", "com.signal.Signal", "org.whispersystems.signal-desktop",
+             "Mattermost.Desktop"],
     "email": ["com.apple.mail", "com.microsoft.Outlook", "com.superhuman.electron", "com.readdle.smartemail-Mac",
               "com.mimestream.Mimestream", "com.airmail", "com.sparkmailapp", "org.mozilla.thunderbird"],
     "ai_chat": ["com.openai.chat", "com.anthropic.claudefordesktop", "com.openai.sky", "ai.perplexity.mac",
@@ -41,17 +42,21 @@ _BUNDLES = {
     "document": ["com.apple.Notes", "md.obsidian", "notion.id", "com.apple.TextEdit", "com.apple.iWork.Pages",
                  "com.microsoft.Word", "com.google.Docs", "com.bear-writer", "com.ulyssesapp.mac",
                  "com.apple.freeform", "com.craft.craft", "com.agiletortoise.Drafts", "abnerworks.Typora",
-                 "com.apple.reminders", "com.culturedcode.ThingsMac", "com.todoist.mac.Todoist"],
+                 "com.apple.reminders", "com.culturedcode.ThingsMac", "com.todoist.mac.Todoist",
+                 "com.linear", "com.figma.Desktop", "com.electron.logseq", "pro.writer.mac"],
 }
 _BROWSERS = ["com.google.Chrome", "com.apple.Safari", "org.mozilla.firefox", "app.zen-browser.zen",
              "company.thebrowser.Browser", "com.brave.Browser", "com.microsoft.edgemac", "com.vivaldi.Vivaldi",
              "com.operasoftware.Opera", "org.chromium.Chromium"]
 _TITLE_HINTS = [
-    ("ai_chat", r"chatgpt|claude|gemini|perplexity|copilot|grok|deepseek|mistral|le chat|poe\b|character\.ai|openai"),
+    ("ai_chat", r"chatgpt|claude|gemini|perplexity|copilot|grok|deepseek|mistral|le chat|poe\b|character\.ai|openai"
+                r"|t3\.chat|notebooklm|ai studio|aistudio"),
     ("email", r"gmail|outlook|proton ?mail|fastmail|hey\.com|mail\b|inbox"),
-    ("chat", r"slack|discord|whatsapp|messenger|telegram|teams|signal|imessage"),
-    ("code", r"github|gitlab|bitbucket|stackoverflow|stack overflow|codesandbox|replit|colab|jupyter|leetcode"),
-    ("document", r"google docs|notion|docs\.google|confluence|overleaf|medium|substack|wordpress|dropbox paper|linear|jira|asana"),
+    ("chat", r"slack|discord|whatsapp|messenger|telegram|teams|signal|imessage|mattermost|google chat"),
+    ("code", r"github|gitlab|bitbucket|stackoverflow|stack overflow|codesandbox|replit|colab|jupyter|leetcode"
+             r"|codeberg|sourcegraph"),
+    ("document", r"google docs|notion|docs\.google|confluence|overleaf|medium|substack|wordpress|dropbox paper|linear|jira|asana"
+                 r"|figma|hackmd|coda\.io|logseq"),
 ]
 
 

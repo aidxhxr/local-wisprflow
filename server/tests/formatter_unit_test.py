@@ -26,6 +26,12 @@ def test_categorize():
     eq(categorize("com.apple.mail", "Mail"), "email", "mail")
     eq(categorize("com.anthropic.claudefordesktop", "Claude"), "ai_chat", "claude desktop")
     eq(categorize("md.obsidian", "Obsidian"), "document", "obsidian")
+    eq(categorize("com.linear", "Linear"), "document", "linear app")
+    eq(categorize("com.figma.Desktop", "Figma"), "document", "figma app")
+    eq(categorize("Mattermost.Desktop", "Mattermost"), "chat", "mattermost app")
+    eq(categorize("company.thebrowser.Browser", "Arc", "T3 Chat - t3.chat"), "ai_chat", "t3.chat tab")
+    eq(categorize("com.google.Chrome", "Chrome", "Linear - linear.app"), "document", "linear tab")
+    eq(categorize("com.google.Chrome", "Chrome", "Untitled - Figma"), "document", "figma tab")
     # Browsers: the window title decides.
     eq(categorize("com.google.Chrome", "Chrome", "ChatGPT"), "ai_chat", "chatgpt tab")
     eq(categorize("com.apple.Safari", "Safari", "Inbox (3) - Gmail"), "email", "gmail tab")
