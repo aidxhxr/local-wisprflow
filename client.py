@@ -40,6 +40,7 @@ p.add_argument("--no-tunnel", action="store_true", help="assume the tunnel is al
 p.add_argument("--quiet", action="store_true", help="no start/stop sounds")
 p.add_argument("--no-overlay", action="store_true")
 p.add_argument("--type", action="store_true", help="type characters instead of pasting")
+p.add_argument("--paste-delay", type=float, default=float(os.environ.get("DICTATE_PASTE_DELAY", "0.3")), help="seconds between Cmd-V and restoring the clipboard; raise it if an app pastes your old clipboard instead (or DICTATE_PASTE_DELAY)")
 p.add_argument("--no-live", action="store_true", default=os.environ.get("DICTATE_LIVE", "1") in ("0", "no", "false"),
                help="do not type the transcript live while speaking; insert only on release (or DICTATE_LIVE=0)")
 p.add_argument("--fake-audio", help="(testing) stream this 16 kHz mono wav instead of the mic")
@@ -635,7 +636,7 @@ def insert_text(text: str):
     if args.debug:
         fa = NSWorkspace.sharedWorkspace().frontmostApplication()
         log(f"  paste: set={ok} front={fa.localizedName() if fa else None} pb={pb.stringForType_(NSPasteboardTypeString)!r:.40}")
-    time.sleep(0.3)
+    time.sleep(args.paste_delay)   # the app reads the pasteboard on its own schedule
     if pb.changeCount() != mine:
         return                  # the user copied something meanwhile; do not overwrite it
     if old:
