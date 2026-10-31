@@ -101,6 +101,9 @@ class Tunnel:
 
 
 # ====================================================================== overlay (main thread only)
+from AppKit import NSEvent  # noqa: E402
+
+
 def on_main(fn):
     def wrapper(*a, **k):
         AppHelper.callAfter(fn, *a, **k)
@@ -165,9 +168,23 @@ class Overlay:
         tf.setTextColor_(NSColor.colorWithCalibratedRed_green_blue_alpha_(*rgb, 1.0))
         return tf
 
+    @staticmethod
+    def _screen():
+        """The screen the mouse is on. mainScreen() is the one with the key window, which on a
+        multi-display setup is often not where the user is typing."""
+        try:
+            pt = NSEvent.mouseLocation()
+            for scr in NSScreen.screens():
+                f = scr.frame()
+                if (f.origin.x <= pt.x < f.origin.x + f.size.width and
+                        f.origin.y <= pt.y < f.origin.y + f.size.height):
+                    return scr
+        except Exception:
+            pass
+        return NSScreen.mainScreen() or NSScreen.screens()[0]
+
     def _place(self):
-        scr = NSScreen.mainScreen() or NSScreen.screens()[0]
-        f = scr.visibleFrame()
+        f = self._screen().visibleFrame()
         x = f.origin.x + (f.size.width - self.W) / 2
         y = f.origin.y + 56
         self.panel.setFrameOrigin_((x, y))
