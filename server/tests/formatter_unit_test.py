@@ -88,6 +88,16 @@ def test_user_msg():
     eq("x" * 4001 in _user_msg("other", "", "", "x" * 5000, "hi"), False, "selection truncated to 4000 chars")
 
 
+def test_timeout():
+    base = formatter.LLM_TIMEOUT
+    eq(formatter._timeout_for(""), base, "empty transcript keeps the base timeout")
+    eq(formatter._timeout_for("hello there"), base + 11 / formatter._TIMEOUT_CHARS_PER_S, "short transcript")
+    two_minutes = "w" * 1800
+    eq(formatter._timeout_for(two_minutes), base + 6.0, "two minutes of speech gets six extra seconds")
+    eq(formatter._timeout_for("hi", "s" * 300), base + 302 / formatter._TIMEOUT_CHARS_PER_S,
+       "selected text counts too")
+
+
 def test_messages():
     msgs = formatter._messages("chat", "Slack", "#eng", "", "hello")
     eq(msgs[0]["role"], "system", "system first")

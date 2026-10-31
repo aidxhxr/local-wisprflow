@@ -11,6 +11,13 @@ log = logging.getLogger("dictate.fmt")
 LLM_URL = os.environ.get("DICTATE_LLM_URL", "http://127.0.0.1:8766/v1/chat/completions")
 LLM_MODEL = os.environ.get("DICTATE_LLM_MODEL", "formatter")
 LLM_TIMEOUT = float(os.environ.get("DICTATE_LLM_TIMEOUT", "3.0"))
+# Extra second of timeout per this many characters of input: formatting is mostly copying, so
+# the output grows with the transcript (and the selection) and a long dictation needs longer.
+_TIMEOUT_CHARS_PER_S = 300
+
+
+def _timeout_for(transcript: str, selected: str = "") -> float:
+    return LLM_TIMEOUT + (len(transcript) + len(selected)) / _TIMEOUT_CHARS_PER_S
 
 # ---------------------------------------------------------------- app categories
 _BUNDLES = {
@@ -244,7 +251,7 @@ class Formatter:
                 "temperature": 0.0,
                 "max_tokens": max_tokens,
                 "chat_template_kwargs": {"enable_thinking": False},
-            })
+            }, timeout=_timeout_for(transcript, selected))
             r.raise_for_status()
             out = _postprocess(r.json()["choices"][0]["message"]["content"], transcript, selected)
             ms = (time.time() - t0) * 1000
