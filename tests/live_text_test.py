@@ -76,6 +76,32 @@ def main():
     assert kb.buf == typed + " steps. Third", kb.buf
     assert 0 < kb.events.count("bs") <= 6, kb.events
 
+    # Final shorter than the live text (the formatter dropped a filler): only the tail is erased.
+    kb = run(["so the build is um broken"], "So the build is broken. ")
+    assert kb.events.count("bs") == len("so the build is um broken")   # 'S' differs at index 0
+    kb = run(["the build is broken again"], "the build is broken ")
+    assert kb.events.count("bs") == len("again") and kb.events[-1] == "bs", kb.events
+
+    # Final identical to the live text: nothing is sent.
+    kb = run(["ship it "], "ship it ")
+    assert kb.events == ["type:ship it "], kb.events
+
+    # No live text (no partial arrived): the whole final is typed, or pasted when long.
+    kb = run([], "Short one. ")
+    assert kb.events == ["type:Short one. "], kb.events
+    kb = run([], "A final that is longer than the forty-eight character typing limit. ")
+    assert not any(e.startswith("type:") for e in kb.events), kb.events
+    kb = run([], "")
+    assert kb.events == [], kb.events
+
+    # Newlines are never typed, even in a short tail.
+    kb = run(["one two"], "one\ntwo\n")
+    assert not any(e.startswith("type:") and "\n" in e for e in kb.events), kb.events
+
+    # Only the first letter's case differs: the app must show the exact final, so it is retyped.
+    kb = run(["hello there"], "Hello there. ")
+    assert kb.events.count("bs") == len("hello there")
+
     assert client.common_prefix_len("abc", "abd") == 2
     assert client.common_prefix_len("", "x") == 0
     print("live_text_test: ok")
