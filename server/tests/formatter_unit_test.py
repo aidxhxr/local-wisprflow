@@ -2,7 +2,7 @@
 output post-processing and prompt assembly. No LLM, GPU or network needed; only httpx must be
 importable. Run anywhere: python server/tests/formatter_unit_test.py
 """
-import asyncio, logging, os, sys
+import asyncio, logging, os, sys, tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import httpx  # noqa: E402
 import formatter  # noqa: E402
@@ -97,6 +97,34 @@ def test_timeout():
     eq(formatter._timeout_for(two_minutes), base + 6.0, "two minutes of speech gets six extra seconds")
     eq(formatter._timeout_for("hi", "s" * 300), base + 302 / formatter._TIMEOUT_CHARS_PER_S,
        "selected text counts too")
+
+
+def test_vocabulary():
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "vocab.txt")
+        v = formatter._VocabFile(path)
+        eq(v.read(), [], "missing file is an empty vocabulary")
+        with open(path, "w") as fh:
+            fh.write("# people\nSwarthmore\n\nParakeet  # the ASR model\nvLLM\nC#\nSwarthmore\n")
+        eq(v.read(), ["Swarthmore", "Parakeet", "vLLM", "C#"], "comments, blanks and duplicates dropped")
+        with open(path, "w") as fh:
+            fh.write("Qwen\n")
+        os.utime(path, (1, 1))   # force a different mtime even on a coarse filesystem clock
+        eq(v.read(), ["Qwen"], "re-read when the mtime changes")
+        with open(path, "w") as fh:
+            fh.write("\n".join(f"t{i}" for i in range(500)))
+        os.utime(path, (2, 2))
+        eq(len(v.read()), formatter.VOCAB_MAX_TERMS, "capped")
+        os.remove(path)
+        eq(v.read(), [], "deleted file clears the vocabulary")
+
+    eq(_user_msg("chat", "", "", "", "hi", ["Swarthmore", "vLLM"]),
+       "context: chat\nvocabulary: Swarthmore, vLLM\ntranscript:\n<<<\nhi\n>>>", "vocabulary line after context")
+    eq(_user_msg("chat", "", "", "", "hi", []), "context: chat\ntranscript:\n<<<\nhi\n>>>", "empty vocabulary omitted")
+    msgs = formatter._messages("chat", "", "", "", "hi", ["Swarthmore"])
+    eq("vocabulary:" in msgs[-1]["content"], True, "live request carries the vocabulary")
+    eq(any("vocabulary:" in m["content"] for m in msgs[1:-1]), False, "few-shot examples do not")
+    eq('"vocabulary:"' in formatter.SYSTEM, True, "system prompt explains the vocabulary line")
 
 
 class FakeClient:

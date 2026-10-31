@@ -15,6 +15,9 @@ LLM_TIMEOUT = float(os.environ.get("DICTATE_LLM_TIMEOUT", "3.0"))
 # the output grows with the transcript (and the selection) and a long dictation needs longer.
 _TIMEOUT_CHARS_PER_S = 300
 RETRY_DELAY_S = 0.25   # pause before the single retry of a failed connection
+# Custom vocabulary: one term per line, '#' starts a comment. Re-read whenever the file changes.
+VOCAB_PATH = os.environ.get("DICTATE_VOCAB", os.path.expanduser("~/dictate/vocab.txt"))
+VOCAB_MAX_TERMS = 200
 
 
 def _timeout_for(transcript: str, selected: str = "") -> float:
@@ -89,6 +92,7 @@ Rules:
 5. Punctuate and capitalize properly. Split run-on speech into sentences. In long dictation, add a paragraph break when the user clearly moves to a new topic.
 6. Keep proper nouns, technical terms and product names as said; fix casing (github -> GitHub, javascript -> JavaScript, iphone -> iPhone, chatgpt -> ChatGPT, openai -> OpenAI, nvidia -> NVIDIA, postgres -> Postgres, macos -> macOS).
 7. If the transcript is empty or only filler, output nothing.
+8. If a "vocabulary:" line is present, it lists names and terms the user often says (people, products, places, project names) with their correct spelling. When a word in the transcript sounds like one of them, write it exactly as listed, casing included; otherwise ignore the list.
 
 Style by app (given on the "context:" line):
 - chat (Messages, Slack, Discord, WhatsApp, Telegram, Teams): casual, keep informal phrasing and contractions. A single short message does not end with a period (keep ? and !). Multi-sentence messages keep normal punctuation.
@@ -163,24 +167,59 @@ FEWSHOT = [
 ]
 
 
-def _user_msg(category: str, app: str, title: str, selected: str, transcript: str) -> str:
+class _VocabFile:
+    """Terms the user wants spelled their way. Cheap to poll: one stat per dictation."""
+    def __init__(self, path: str):
+        self.path, self.mtime, self.terms = path, None, []
+
+    def read(self) -> list[str]:
+        try:
+            mtime = os.stat(self.path).st_mtime
+        except OSError:
+            if self.terms:
+                log.info("vocabulary file %s gone, cleared", self.path)
+            self.mtime, self.terms = None, []
+            return self.terms
+        if mtime != self.mtime:
+            terms = []
+            with open(self.path, encoding="utf-8", errors="replace") as fh:
+                for line in fh:
+                    term = re.sub(r"(^|\s)#.*$", "", line).strip()   # keep "C#", drop "# comment"
+                    if term and term not in terms:
+                        terms.append(term)
+            self.mtime, self.terms = mtime, terms[:VOCAB_MAX_TERMS]
+            log.info("vocabulary: %d terms from %s", len(self.terms), self.path)
+        return self.terms
+
+
+_vocab = _VocabFile(VOCAB_PATH)
+
+
+def vocabulary() -> list[str]:
+    return _vocab.read()
+
+
+def _user_msg(category: str, app: str, title: str, selected: str, transcript: str,
+              vocab: list[str] | None = None) -> str:
     ctx = category + (f" ({app})" if app else "")
     if title:
         ctx += f" — window: {title[:120]!r}"
     parts = [f"context: {ctx}"]
+    if vocab:
+        parts.append("vocabulary: " + ", ".join(vocab))
     if selected:
         parts.append(f"selected text:\n<<<\n{selected[:4000]}\n>>>")
     parts.append(f"transcript:\n<<<\n{transcript}\n>>>")
     return "\n".join(parts)
 
 
-def _messages(category, app, title, selected, transcript):
+def _messages(category, app, title, selected, transcript, vocab=None):
     msgs = [{"role": "system", "content": SYSTEM}]
     for item in FEWSHOT:
         cat, ap, sel, tr, out = item[:5]
         msgs.append({"role": "user", "content": _user_msg(cat, ap, item[5] if len(item) > 5 else "", sel, tr)})
         msgs.append({"role": "assistant", "content": out})
-    msgs.append({"role": "user", "content": _user_msg(category, app, title, selected, transcript)})
+    msgs.append({"role": "user", "content": _user_msg(category, app, title, selected, transcript, vocab)})
     return msgs
 
 
@@ -262,7 +301,8 @@ class Formatter:
             max_tokens = int(len(transcript) / 3 + len(selected) / 2) + 48
             r = await self._post({
                 "model": LLM_MODEL,
-                "messages": _messages(category, app, context.get("title", ""), selected, transcript.strip()),
+                "messages": _messages(category, app, context.get("title", ""), selected, transcript.strip(),
+                                      vocabulary()),
                 "temperature": 0.0,
                 "max_tokens": max_tokens,
                 "chat_template_kwargs": {"enable_thinking": False},
