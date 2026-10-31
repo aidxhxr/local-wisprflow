@@ -54,8 +54,12 @@ popups, smart quotes); you then get the old behaviour of a single insert on rele
 
 Flags: `--key cmd_r|ctrl_r|shift_r|f13|f18|f19`, `--quiet` (no sounds), `--no-overlay`, `--no-live`,
 `--type` (type the final instead of pasting), `--mic default|builtin|<name>` (see below),
-`--doctor` (check mic and permissions, then exit), `--fake-audio clip.wav` (smoke test, no hotkey needed),
-`--no-insert` (log instead of typing; for testing).
+`--doctor` (check ssh, server, mic and permissions, then exit), `--list-mics` (print input devices and exit),
+`--paste-delay 0.3` (seconds before the clipboard is restored after a paste; raise it for an app that pastes
+the old clipboard), `--fake-audio clip.wav` (smoke test, no hotkey needed), `--no-insert` (log instead of
+typing; for testing). Environment: `DICTATE_SSH`, `DICTATE_KEY`, `DICTATE_PORT`, `DICTATE_MIC`, `DICTATE_LIVE`,
+`DICTATE_PASTE_DELAY` are the defaults for the matching flags. Only one client runs at a time: a second one
+exits naming the pid of the first.
 
 ### Microphone
 

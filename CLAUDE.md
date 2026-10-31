@@ -207,7 +207,10 @@ Flags: `--key cmd_r|ctrl_r|shift_r|f13|f18|f19` (hotkey), `--quiet`, `--no-overl
 `--no-live` (insert only on release; also `DICTATE_LIVE=0`),
 `--type` (type the final instead of pasting; use if an app rejects the paste),
 `--mic builtin|<name>` (record from the Mac's own mic or a named device instead of the system
-input; also `DICTATE_MIC`), `--doctor` (check mic and permissions, then exit).
+input; also `DICTATE_MIC`), `--doctor` (check ssh, server, mic and permissions, then exit),
+`--list-mics`, `--paste-delay` (also `DICTATE_PASTE_DELAY`). `DICTATE_KEY` and `DICTATE_PORT` set the
+defaults for `--key` and `--port`, which a LaunchAgent can use instead of flags. A second client
+refuses to start and names the pid of the running one.
 
 ### 2.6 Keeping it running
 
@@ -258,7 +261,8 @@ Check now: `scripts/status.sh` prints `all good` and exits 0.
 - Models and ports: `Environment=` lines in `server/dictate.service` and the vLLM args in
   `server/dictate-llm.service`. Env vars read by the code: `DICTATE_MODEL`, `DICTATE_HOST`,
   `DICTATE_PORT` (server), `DICTATE_LLM_URL`, `DICTATE_LLM_MODEL`, `DICTATE_LLM_TIMEOUT` (formatter),
-  `DICTATE_SSH` (client).
+  `DICTATE_VOCAB` (formatter), `DICTATE_SSH`, `DICTATE_KEY`, `DICTATE_PORT`, `DICTATE_MIC`, `DICTATE_LIVE`,
+  `DICTATE_PASTE_DELAY` (client).
 - Formatting behaviour, app categories, few-shot examples: `server/formatter.py`. After
   editing, `scp` it to `~/dictate/` and `systemctl --user restart dictate`.
 - Hands-free segmentation thresholds, partial window (`PARTIAL_WINDOW_S`), final chunking
