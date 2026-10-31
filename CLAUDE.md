@@ -265,8 +265,11 @@ Check now: `scripts/status.sh` prints `all good` and exits 0.
   `DICTATE_PASTE_DELAY` (client).
 - Formatting behaviour, app categories, few-shot examples: `server/formatter.py`. After
   editing, `scp` it to `~/dictate/` and `systemctl --user restart dictate`.
+- Proper nouns the formatter should spell right: `~/dictate/vocab.txt` on the box (one per line,
+  `#` comments, `DICTATE_VOCAB` overrides the path); re-read on change, no restart needed.
 - Hands-free segmentation thresholds, partial window (`PARTIAL_WINDOW_S`), final chunking
-  (`FINAL_CHUNK_S`): constants at the top of `server/server.py`.
+  (`FINAL_CHUNK_S`), idle session cut-off (`IDLE_TIMEOUT_S`): constants at the top of
+  `server/server.py`. The hallucination word list lives in `server/audio_utils.py`.
 - Hotkey, overlay, live-text typing (`LiveText`), paste logic, app-context detection: `client.py`.
 - Running the client unattended: `scripts/dictate-tmux`, `scripts/install-launchagent.sh` with the
   template in `launchd/`; health check: `scripts/status.sh`.

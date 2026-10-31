@@ -61,6 +61,12 @@ typing; for testing). Environment: `DICTATE_SSH`, `DICTATE_KEY`, `DICTATE_PORT`,
 `DICTATE_PASTE_DELAY` are the defaults for the matching flags. Only one client runs at a time: a second one
 exits naming the pid of the first.
 
+### Custom vocabulary
+
+Names the recognizer keeps misspelling (people, products, places) go one per line in `~/dictate/vocab.txt`
+on the GPU box (`#` starts a comment; `DICTATE_VOCAB` points elsewhere). The formatter re-reads the file
+when it changes and prefers those spellings when the transcript sounds like one of them.
+
 ### Microphone
 
 By default the client records from whatever macOS currently uses as input, re-checked on every press,
