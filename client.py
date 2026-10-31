@@ -883,6 +883,8 @@ class Dictation:
             self.ov.partial(m["text"])
             self.out_q.put(m)
         elif t == "started":
+            if m.get("id") != self.sid:
+                return                  # late answer to a session a quick re-press already replaced
             self.where = f"{self.where} · {m.get('category')}"
             if self.active:
                 self.ov.listening(self.where, self.handsfree, live=self.live_on, mic=self.mic)
