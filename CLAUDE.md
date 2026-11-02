@@ -128,9 +128,16 @@ cd ~/dictate
 .venv/bin/python tests/ws_test.py 8765 tests/two.wav   # streams a wav over /stream, prints partials/finals
 ```
 
-`fmt_test.py` prints `used_llm=True` on every case when vLLM is healthy. If it prints
-`used_llm=False`, the formatter timed out and fell back to regex cleanup; look at
+`fmt_test.py` prints `used_llm=True` on every case when vLLM is healthy and exits 0. If it prints
+`used_llm=False` (and exits 1), the formatter timed out and fell back to regex cleanup; look at
 `journalctl --user -u dictate-llm`.
+
+The unit tests need no GPU and can run on either machine:
+
+```
+.venv/bin/python tests/formatter_unit_test.py
+.venv/bin/python tests/audio_utils_test.py
+```
 
 ## Part 2 — Mac (client)
 
