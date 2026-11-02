@@ -1292,6 +1292,18 @@ def doctor() -> int:
             rc, out, err = _ssh_run(f"curl -s -m 5 localhost:{args.port}/health")
             if rc == 0 and '"ok":true' in out.replace(" ", ""):
                 report("PASS", "server", f"/health on the box: {out[:120]}")
+                try:
+                    h = json.loads(out)
+                except ValueError:
+                    h = {}
+                if h.get("llm") is False:
+                    report("WARN", "formatter", "vLLM is not answering: raw transcripts are inserted, no formatting. "
+                           f"Fix: ssh {args.host} systemctl --user status dictate-llm")
+                elif h.get("llm"):
+                    report("PASS", "formatter", "vLLM answers on the box")
+                if "vocab" in h:
+                    report("INFO", "vocabulary", f"{h['vocab']} terms in ~/dictate/vocab.txt on the box"
+                           if h["vocab"] else "no ~/dictate/vocab.txt on the box (optional; names to spell right)")
             else:
                 report("FAIL", "server", (f"/health on the box answered {out[:120]!r}" if out else
                                           f"nothing listens on localhost:{args.port} on the box ({err or f'curl exited {rc}'})")
