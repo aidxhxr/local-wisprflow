@@ -1,6 +1,7 @@
 #!/bin/zsh
 # Launcher for the Mac client. Runs client.py from the repo's own venv.
-cd "$(dirname "$0")"
+# Resolves symlinks first, so `ln -s /path/to/repo/dictate ~/bin/dictate` works too.
+cd "${0:A:h}" || exit 2
 if [[ ! -x .venv/bin/python ]]; then
   print -u2 "dictate: no venv at $PWD/.venv. Set it up first:"
   print -u2 "  python3.12 -m venv .venv"
