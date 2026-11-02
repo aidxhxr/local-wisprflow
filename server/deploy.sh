@@ -5,8 +5,11 @@ set -eu
 host="${1:-${DICTATE_SSH:-}}"
 [ -n "$host" ] || { echo "usage: server/deploy.sh user@gpu-box  (or set DICTATE_SSH)" >&2; exit 2; }
 cd "$(dirname "$0")"
+if ! ssh -o BatchMode=yes -o ConnectTimeout=10 "$host" 'mkdir -p ~/dictate/tests ~/.config/systemd/user'; then
+  echo "deploy: ssh -o BatchMode=yes $host failed (key not loaded? box off?)" >&2; exit 1
+fi
 scp -q server.py audio_utils.py formatter.py vad.py requirements.txt "$host:~/dictate/"
-scp -q -r tests "$host:~/dictate/"
+scp -q tests/*.py tests/*.wav tests/README.md "$host:~/dictate/tests/"   # not __pycache__ or .DS_Store
 scp -q dictate.service dictate-llm.service "$host:~/.config/systemd/user/"
 ssh "$host" 'systemctl --user daemon-reload && systemctl --user restart dictate'
 echo "restarted dictate; waiting for the model ..."
