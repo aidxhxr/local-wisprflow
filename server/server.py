@@ -203,7 +203,7 @@ class Session:
         self.send = send                      # async fn(dict)
         self.id = data.get("id") or f"{time.time():.3f}"
         self.mode = data.get("mode", "hold")  # hold | auto
-        self.context = data.get("context") or {}
+        self.context = data.get("context") if isinstance(data.get("context"), dict) else {}
         self.context.setdefault("category", categorize(
             self.context.get("bundle", ""), self.context.get("app", ""), self.context.get("title", "")))
         self.chunks: list[np.ndarray] = []
@@ -426,7 +426,15 @@ async def stream(ws: WebSocket):
                 if session:
                     session.add_audio(msg["bytes"])
                 continue
-            data = json.loads(msg.get("text") or "{}")
+            try:
+                data = json.loads(msg.get("text") or "{}")
+            except ValueError:
+                log.warning("ws: ignoring a text frame that is not JSON (%d bytes)", len(msg.get("text") or ""))
+                await send({"type": "error", "error": "message is not JSON"})
+                continue
+            if not isinstance(data, dict):
+                await send({"type": "error", "error": "message must be a JSON object"})
+                continue
             t = data.get("type")
             if t == "start":
                 if session and not session.closed:
