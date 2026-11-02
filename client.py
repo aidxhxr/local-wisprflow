@@ -28,7 +28,7 @@ SR = 16000
 TAP_S = 0.35
 FINAL_TIMEOUT_S = 12        # give up waiting for the server's final after this long
 FOCUS_CONFIRM_S = 0.15      # a focus change must still hold after this long to count
-HANDSFREE_IDLE_S = 300      # hands-free stops itself after this long without a spoken segment
+HANDSFREE_IDLE_S = int(os.environ.get("DICTATE_HANDSFREE_IDLE_S", "300"))   # hands-free stops itself after this long without speech
 HOTKEYS = {"alt_r": keyboard.Key.alt_r, "alt_l": keyboard.Key.alt_l, "cmd_r": keyboard.Key.cmd_r,
            "ctrl_r": keyboard.Key.ctrl_r, "shift_r": keyboard.Key.shift_r,
            "f13": keyboard.Key.f13, "f17": keyboard.Key.f17, "f18": keyboard.Key.f18, "f19": keyboard.Key.f19,
