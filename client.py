@@ -31,7 +31,8 @@ FOCUS_CONFIRM_S = 0.15      # a focus change must still hold after this long to 
 HANDSFREE_IDLE_S = 300      # hands-free stops itself after this long without a spoken segment
 HOTKEYS = {"alt_r": keyboard.Key.alt_r, "alt_l": keyboard.Key.alt_l, "cmd_r": keyboard.Key.cmd_r,
            "ctrl_r": keyboard.Key.ctrl_r, "shift_r": keyboard.Key.shift_r,
-           "f13": keyboard.Key.f13, "f18": keyboard.Key.f18, "f19": keyboard.Key.f19}
+           "f13": keyboard.Key.f13, "f17": keyboard.Key.f17, "f18": keyboard.Key.f18, "f19": keyboard.Key.f19,
+           "f20": keyboard.Key.f20}
 
 p = argparse.ArgumentParser()
 p.add_argument("--host", default=os.environ.get("DICTATE_SSH"),
