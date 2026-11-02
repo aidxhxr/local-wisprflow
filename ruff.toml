@@ -1,0 +1,10 @@
+# ruff check .   (the Mac venv does not ship ruff; any ruff >= 0.4 works)
+# The code keeps related imports and short statements on one line on purpose; only the
+# rules that catch real mistakes (unused names, undefined names, likely bugs) are on.
+line-length = 120
+target-version = "py310"
+extend-exclude = [".venv", "server/.venv"]
+
+[lint]
+select = ["E", "F", "W", "B"]
+ignore = ["E401", "E402", "E501", "E701", "E702", "E731"]
