@@ -9,3 +9,8 @@ server/.venv
 # local noise
 *.log
 .DS_Store
+
+# tool caches
+.ruff_cache/
+.pytest_cache/
+.mypy_cache/
