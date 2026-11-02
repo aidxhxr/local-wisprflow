@@ -35,7 +35,11 @@ HOTKEYS = {"alt_r": keyboard.Key.alt_r, "alt_l": keyboard.Key.alt_l, "cmd_r": ke
            "f13": keyboard.Key.f13, "f17": keyboard.Key.f17, "f18": keyboard.Key.f18, "f19": keyboard.Key.f19,
            "f20": keyboard.Key.f20}
 
-p = argparse.ArgumentParser()
+p = argparse.ArgumentParser(
+    description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter,
+    epilog="Environment: DICTATE_SSH, DICTATE_PORT, DICTATE_KEY, DICTATE_MIC, DICTATE_LIVE and DICTATE_PASTE_DELAY "
+           "set the defaults of the matching flags; DICTATE_HANDSFREE_IDLE_S (default 300) is the hands-free "
+           "idle cut-off in seconds.")
 p.add_argument("--host", default=os.environ.get("DICTATE_SSH"),
                help="ssh target of the GPU box, e.g. user@gpu-box (default: $DICTATE_SSH)")
 p.add_argument("--port", type=int, default=int(os.environ.get("DICTATE_PORT", "8765")),
