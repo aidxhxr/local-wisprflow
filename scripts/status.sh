@@ -47,8 +47,11 @@ for unit in dictate dictate-llm; do
   state=$(ssh_q "systemctl --user is-active $unit" 2>/dev/null || true)
   if [ "$state" = "active" ]; then ok "$unit.service active"; else bad "$unit.service: ${state:-unknown}  (journalctl --user -u $unit -n 50)"; fi
 done
-if ssh_q "curl -sf -m 5 localhost:$port/health" 2>/dev/null | grep -q '"ok":true'; then
-  ok "/health on the box"
+health=$(ssh_q "curl -sf -m 5 localhost:$port/health" 2>/dev/null || true)
+if printf '%s' "$health" | grep -q '"ok":true'; then
+  up=$(printf '%s' "$health" | sed -n 's/.*"uptime_s":\([0-9]*\).*/\1/p')
+  vocab=$(printf '%s' "$health" | sed -n 's/.*"vocab":\([0-9]*\).*/\1/p')
+  ok "/health on the box${up:+ (model up $((up / 3600))h $((up % 3600 / 60))m}${vocab:+, $vocab vocabulary terms}${up:+)}"
 else
   bad "/health on the box (model not loaded yet, or a CUDA fault; see journalctl --user -u dictate)"
 fi
