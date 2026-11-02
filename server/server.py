@@ -12,7 +12,7 @@ from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
 from audio_utils import join_text, looks_hallucinated, pcm16_to_f32, quietest_point, resample
-from formatter import Formatter, clean, categorize
+from formatter import Formatter, clean, categorize, vocabulary
 from vad import VAD
 
 MODEL_NAME = os.environ.get("DICTATE_MODEL", "nvidia/parakeet-tdt-0.6b-v2")
@@ -169,7 +169,7 @@ async def health():
         _last_probe = time.time()
         await asyncio.to_thread(_probe_cuda)
     return {"ok": _model is not None, "model": MODEL_NAME, "llm": await _fmt.health(),
-            "gpu": _gpu_mem(), "load_s": round(_load_s, 1),
+            "gpu": _gpu_mem(), "load_s": round(_load_s, 1), "vocab": len(vocabulary()),
             "uptime_s": round(time.time() - _t_ready) if _t_ready else 0}
 
 
