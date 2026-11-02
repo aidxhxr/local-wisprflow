@@ -539,8 +539,14 @@ class FakeRecorder:
     """Streams a wav file at real-time pace (testing only); calls on_end when the clip is over."""
     def __init__(self, sink, path, on_end=None):
         self.sink, self.run, self.on_end = sink, False, on_end
-        w = wave.open(path); assert w.getframerate() == SR and w.getnchannels() == 1
-        self.pcm = w.readframes(w.getnframes())
+        try:
+            with wave.open(path) as w:
+                fmt = (w.getframerate(), w.getnchannels(), w.getsampwidth())
+                if fmt != (SR, 1, 2):
+                    raise SystemExit(f"--fake-audio {path}: need a 16 kHz mono 16-bit wav, got rate/channels/width {fmt}")
+                self.pcm = w.readframes(w.getnframes())
+        except (OSError, wave.Error) as e:
+            raise SystemExit(f"--fake-audio {path}: {e}")
         self.seconds = len(self.pcm) / 2 / SR
 
     def start(self):
