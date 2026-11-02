@@ -53,7 +53,7 @@ if [ -n "$dry" ]; then
   exit 0
 fi
 
-if other=$(pgrep -f 'client\.py' | head -1) && [ -n "$other" ]; then
+if other=$(pgrep -f '^(dictate|[^ ]*python[0-9.]*) [^ ]*client\.py' | head -1) && [ -n "$other" ]; then
   rm -f "$tmp"
   die "a client is already running (pid $other). Stop it first (scripts/dictate-tmux stop, or Ctrl-C in its terminal), or two of them will fight over the hotkey."
 fi
