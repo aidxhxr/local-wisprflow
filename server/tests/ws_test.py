@@ -15,7 +15,8 @@ if pcm_path.endswith(".wav"):
             sys.exit(f"{pcm_path}: need 16 kHz mono 16-bit, got channels/width/rate {fmt}")
         pcm = w.readframes(w.getnframes())
 else:
-    pcm = open(pcm_path, "rb").read()
+    with open(pcm_path, "rb") as fh:
+        pcm = fh.read()
 print(f"{len(pcm) / 32000:.1f}s of audio, mode={mode}, speed={speed}x")
 ws = websocket.create_connection(f"ws://127.0.0.1:{port}/stream")
 t0 = time.time()
@@ -45,7 +46,7 @@ for i in range(0, len(pcm), CH):
 t_stop = time.time()
 if mode == "auto":
     print(f"{t_stop-t0:6.2f}s clip ended; streaming silence")
-    for i in range(int(2.5 / 0.064)):
+    for _ in range(int(2.5 / 0.064)):
         ws.send_binary(bytes(2048)); time.sleep(0.064)
     t_stop = time.time()
 ws.send(json.dumps({"type": "stop"}))

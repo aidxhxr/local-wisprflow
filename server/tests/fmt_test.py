@@ -1,4 +1,4 @@
-import asyncio, os, sys, time, json
+import asyncio, os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from formatter import Formatter
 
