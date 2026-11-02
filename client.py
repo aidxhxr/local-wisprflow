@@ -164,6 +164,10 @@ class Tunnel:
         self.stop = True
         if self.proc and self.proc.poll() is None:
             self.proc.terminate()
+            try:
+                self.proc.wait(2)       # the watchdog kills ssh on TERM; give it a moment so the port is free
+            except subprocess.TimeoutExpired:
+                self.proc.kill()
 
 
 # ====================================================================== overlay (main thread only)
