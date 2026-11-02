@@ -11,7 +11,7 @@ import torch
 from fastapi import FastAPI, Request, Query, WebSocket, WebSocketDisconnect
 from fastapi.responses import JSONResponse
 
-from audio_utils import HALLUCINATIONS, join_text, looks_hallucinated, pcm16_to_f32, quietest_point, resample
+from audio_utils import join_text, looks_hallucinated, pcm16_to_f32, quietest_point, resample
 from formatter import Formatter, clean, categorize
 from vad import VAD
 
@@ -358,7 +358,6 @@ class Session:
             raw_text = await asyncio.to_thread(_asr_long, _model, buf)
             asr_ms = (time.time() - t0) * 1000
         raw_text = await asyncio.to_thread(drop_if_hallucinated, raw_text, buf)
-        t1 = time.time()
         fmt = await _fmt.format(raw_text, self.context)
         total = (time.time() - t0) * 1000
         log.info("[%s] %.1fs audio | asr %.0f ms | llm %.0f ms%s | %s | %r -> %r",
