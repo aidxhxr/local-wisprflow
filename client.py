@@ -1223,6 +1223,26 @@ def other_client_pids() -> list:
     return pids
 
 
+# ====================================================================== permissions
+def permission_warnings() -> list:
+    """Accessibility and Input Monitoring, as macOS attributes them to the app that launched us.
+    A missing one is the usual reason a hotkey does nothing, so it is said at startup."""
+    term = os.environ.get("TERM_PROGRAM", "the app this was launched from")
+    out = []
+    try:
+        from ApplicationServices import AXIsProcessTrusted
+        if not AXIsProcessTrusted():
+            out.append(f"Accessibility is not granted to {term}: the result cannot be pasted and the target app is unknown")
+    except Exception:
+        pass
+    try:
+        if not Quartz.CGPreflightListenEventAccess():
+            out.append(f"Input Monitoring is not granted to {term}: the hotkey will not be seen")
+    except Exception:
+        pass
+    return out
+
+
 # ====================================================================== doctor
 def _ssh_run(cmd: str, timeout=20):
     """One-shot ssh to the GPU box with the tunnel's options; (returncode, stdout, last stderr line)."""
@@ -1390,6 +1410,8 @@ def main():
         os._exit(2)     # a setup error: the tmux wrapper does not restart on 2
     listener = keyboard.Listener(on_press=d.on_press, on_release=d.on_release)
     listener.start()
+    for w in permission_warnings():
+        log(f"WARNING: {w} (System Settings → Privacy & Security, then quit and reopen it)")
     log(f"ready. hold [{args.key}] to dictate · tap for hands-free · select text + speak to edit · Ctrl-C quits")
     if args.fake_audio:
         # Smoke test: run one full session without the hotkey, then exit once the final lands.
