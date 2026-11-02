@@ -1,3 +1,5 @@
+"""Twenty formatting cases against the live LLM. Run on the GPU box: .venv/bin/python tests/fmt_test.py
+Exits 1 if any case fell back to the regex cleanup (vLLM down or slower than the timeout)."""
 import asyncio, os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from formatter import Formatter
@@ -29,14 +31,16 @@ async def main():
     f = Formatter()
     print("llm health:", await f.health())
     await f.format("warm up please", {"category": "other"})
-    tot = 0
+    tot, fallbacks = 0, 0
     for cat, app, title, sel, tr in CASES:
         t0 = time.time()
         r = await f.format(tr, {"category": cat, "app": app, "title": title, "selected_text": sel})
         ms = (time.time() - t0) * 1000; tot += ms
+        fallbacks += not r["used_llm"]
         print(f"\n[{cat}/{app}] {ms:.0f} ms llm={r['used_llm']}" + (f"\n  SEL: {sel!r}" if sel else ""))
         print(f"  IN : {tr}")
         print(f"  OUT: {r['text']!r}")
-    print(f"\navg {tot/len(CASES):.0f} ms")
+    print(f"\n{len(CASES)} cases, avg {tot/len(CASES):.0f} ms, {fallbacks} fell back to the regex cleanup")
+    return 1 if fallbacks else 0
 
-asyncio.run(main())
+sys.exit(asyncio.run(main()))
