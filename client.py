@@ -555,7 +555,7 @@ class FakeRecorder:
                     raise SystemExit(f"--fake-audio {path}: need a 16 kHz mono 16-bit wav, got rate/channels/width {fmt}")
                 self.pcm = w.readframes(w.getnframes())
         except (OSError, wave.Error) as e:
-            raise SystemExit(f"--fake-audio {path}: {e}")
+            raise SystemExit(f"--fake-audio {path}: {e}") from None
         self.seconds = len(self.pcm) / 2 / SR
 
     def start(self):
