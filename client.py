@@ -1195,7 +1195,9 @@ def other_client_pids() -> list:
     for line in out.splitlines():
         pid, _, cmd = line.strip().partition(" ")
         argv = cmd.split()
-        if (len(argv) >= 2 and os.path.basename(argv[0]).startswith("python") and argv[1].endswith("client.py")
+        prog = os.path.basename(argv[0]) if argv else ""
+        # ./dictate execs python as "dictate", so the process list shows either name.
+        if (len(argv) >= 2 and (prog.startswith("python") or prog == "dictate") and argv[1].endswith("client.py")
                 and "--fake-audio" not in argv and "--doctor" not in argv and int(pid) != os.getpid()):
             pids.append(int(pid))
     return pids
