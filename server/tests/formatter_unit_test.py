@@ -22,6 +22,8 @@ def test_categorize():
     eq(categorize("com.googlecode.iterm2", "iTerm2", "codex — ~/proj"), "ai_chat", "codex in iTerm")
     eq(categorize("com.microsoft.VSCode", "Code"), "code", "vscode")
     eq(categorize("com.jetbrains.pycharm", "PyCharm"), "code", "jetbrains prefix match")
+    eq(categorize("com.barebones.bbedit", "BBEdit"), "code", "bbedit")
+    eq(categorize("org.gnu.Emacs", "Emacs"), "code", "emacs")
     eq(categorize("com.tinyspeck.slackmacgap", "Slack", "#eng"), "chat", "slack")
     eq(categorize("com.apple.mail", "Mail"), "email", "mail")
     eq(categorize("com.anthropic.claudefordesktop", "Claude"), "ai_chat", "claude desktop")

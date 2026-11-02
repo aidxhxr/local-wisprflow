@@ -27,7 +27,8 @@ def _timeout_for(transcript: str, selected: str = "") -> float:
 _BUNDLES = {
     "code": ["com.microsoft.VSCode", "com.todesktop.230313mzl4w4u92", "com.apple.dt.Xcode", "com.jetbrains.",
              "dev.zed.Zed", "com.sublimetext", "com.exafunction.windsurf", "com.google.android.studio",
-             "com.vscodium", "com.neovide", "org.vim.MacVim"],
+             "com.vscodium", "com.neovide", "org.vim.MacVim", "com.barebones.bbedit", "com.panic.Nova",
+             "org.gnu.Emacs"],
     "terminal": ["com.apple.Terminal", "com.googlecode.iterm2", "com.mitchellh.ghostty", "dev.warp.Warp",
                  "net.kovidgoyal.kitty", "org.alacritty", "com.github.wez.wezterm", "co.zeit.hyper",
                  "com.tabby"],
