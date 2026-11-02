@@ -205,16 +205,20 @@ End-to-end check without a microphone, hotkey or any clicking:
 It opens the tunnel, streams the bundled TTS clip as if it were spoken, logs every live-text
 keystroke it would have sent (`[no-insert] type ...`) and the formatted final, and exits 0.
 Without `--no-insert` it really types into the frontmost app, so only drop the flag when a text
-field is focused on purpose. Unit test for the live-text diff: `.venv/bin/python tests/live_text_test.py`.
+field is focused on purpose. `scripts/test.sh` runs the live-text diff test, the two server unit
+tests and ruff (if installed) in one go; it must print `all tests passed`.
 
 Then have the user hold Right Option, speak, release: words appear at the cursor while speaking
 and are replaced by the formatted text on release. Escape while dictating cancels the session;
 hands-free turns itself off after 5 minutes without speech (`HANDSFREE_IDLE_S` in `client.py`).
-Flags: `--key cmd_r|ctrl_r|shift_r|f13|f18|f19` (hotkey), `--quiet`, `--no-overlay`,
+If the log shows a `WARNING: ... is not granted` line before `ready`, the permissions in 2.4 are
+missing for this terminal app; fix that before trying the hotkey.
+Flags: `--key alt_l|cmd_r|ctrl_r|shift_r|f13|f17|f18|f19|f20` (hotkey), `--quiet`, `--no-overlay`,
 `--no-live` (insert only on release; also `DICTATE_LIVE=0`),
 `--type` (type the final instead of pasting; use if an app rejects the paste),
-`--mic builtin|<name>` (record from the Mac's own mic or a named device instead of the system
-input; also `DICTATE_MIC`), `--doctor` (check ssh, server, mic and permissions, then exit),
+`--mic builtin|<name>|<index>` (record from the Mac's own mic, a named device or an index from
+`--list-mics` instead of the system input; also `DICTATE_MIC`), `--doctor` (check ssh, server,
+formatter, mic and permissions, then exit),
 `--list-mics`, `--paste-delay` (also `DICTATE_PASTE_DELAY`). `DICTATE_KEY` and `DICTATE_PORT` set the
 defaults for `--key` and `--port`, which a LaunchAgent can use instead of flags. A second client
 refuses to start and names the pid of the running one.
