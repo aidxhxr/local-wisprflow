@@ -53,13 +53,13 @@ _BROWSERS = ["com.google.Chrome", "com.apple.Safari", "org.mozilla.firefox", "or
              "com.duckduckgo.macos.browser"]
 _TITLE_HINTS = [
     ("ai_chat", r"chatgpt|claude|gemini|perplexity|copilot|grok|deepseek|mistral|le chat|poe\b|character\.ai|openai"
-                r"|t3\.chat|notebooklm|ai studio|aistudio"),
+                r"|t3\.chat|notebooklm|ai studio|aistudio|kimi|qwen|lmarena|meta ai|duck\.ai"),
     ("email", r"gmail|outlook|proton ?mail|fastmail|hey\.com|mail\b|inbox"),
-    ("chat", r"slack|discord|whatsapp|messenger|telegram|teams|signal|imessage|mattermost|google chat"),
+    ("chat", r"slack|discord|whatsapp|messenger|telegram|teams|signal|imessage|mattermost|google chat|zulip"),
     ("code", r"github|gitlab|bitbucket|stackoverflow|stack overflow|codesandbox|replit|colab|jupyter|leetcode"
-             r"|codeberg|sourcegraph"),
+             r"|codeberg|sourcegraph|codepen|jsfiddle"),
     ("document", r"google docs|notion|docs\.google|confluence|overleaf|medium|substack|wordpress|dropbox paper|linear|jira|asana"
-                 r"|figma|hackmd|coda\.io|logseq"),
+                 r"|figma|hackmd|coda\.io|logseq|roam research|quip"),
 ]
 
 
