@@ -1058,6 +1058,10 @@ class Dictation:
                 self.ov.listening(self.where, self.handsfree, live=self.live_on, mic=self.mic)
         elif t == "final":
             self.out_q.put(m)
+        elif t == "error":
+            log(f"  server: {m.get('error')}")
+        elif args.debug and t not in ("mode", "cancelled"):
+            log(f"  unexpected message from the server: {m!r:.120}")
 
     def _out_loop(self):
         """Everything that touches the target app happens here, in message order: a partial can
