@@ -3,6 +3,7 @@
 #
 #   scripts/dictate-tmux [client flags...]   start it, or attach if it is already running
 #   scripts/dictate-tmux log                 print the client's last screen of output
+#   scripts/dictate-tmux status              is it running? (exit 0 if so, 1 if not)
 #   scripts/dictate-tmux stop                kill the session, and the client with it
 #
 # Client flags pass straight through: scripts/dictate-tmux --mic builtin --key f18
@@ -14,11 +15,20 @@ repo=${0:A:h:h}
 session=${DICTATE_TMUX_SESSION:-dictate}
 
 case ${1:-} in
-  log)  exec tmux capture-pane -p -t "$session" ;;
+  log)
+    if ! tmux has-session -t "$session" 2>/dev/null; then
+      print -u2 "dictate-tmux: not running (no tmux session '$session'); start it with scripts/dictate-tmux"; exit 1
+    fi
+    exec tmux capture-pane -p -t "$session" ;;
+  status)
+    if tmux has-session -t "$session" 2>/dev/null; then
+      echo "running in tmux session '$session' (since $(tmux display -p -t "$session" '#{t:session_created}'))"; exit 0
+    fi
+    echo "not running"; exit 1 ;;
   stop)
     if tmux kill-session -t "$session" 2>/dev/null; then echo "stopped"; else echo "not running"; fi
     exit 0 ;;
-  -h|--help|help) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help|help) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 0 ;;
 esac
 
 if tmux has-session -t "$session" 2>/dev/null; then
