@@ -7,7 +7,9 @@
 #                                                               launchctl steps, change nothing
 #
 # Reads DICTATE_SSH from the environment and bakes it into the plist (launchd does not read
-# ~/.zshrc). Re-run after changing the host, the flags, or moving the repo.
+# ~/.zshrc), along with any other DICTATE_* variable that is set (DICTATE_KEY, DICTATE_MIC,
+# DICTATE_LIVE, DICTATE_PASTE_DELAY, DICTATE_PORT, DICTATE_HANDSFREE_IDLE_S). Re-run after
+# changing the host, the flags, the variables, or moving the repo.
 #
 # Permissions: launchd runs the venv's python directly, so Microphone, Accessibility and
 # Input Monitoring must be granted to that python binary, not to your terminal. The script
@@ -36,8 +38,21 @@ for a in "$@"; do
 "
 done
 
+xml() { printf '%s' "$1" | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g'; }
+env_xml=""
+for name in DICTATE_KEY DICTATE_MIC DICTATE_LIVE DICTATE_PASTE_DELAY DICTATE_PORT DICTATE_HANDSFREE_IDLE_S; do
+  val=$(printenv "$name" || true)
+  [ -n "$val" ] || continue
+  env_xml="$env_xml    <key>$name</key>
+    <string>$(xml "$val")</string>
+"
+done
+
 plist=$(sed -e "s|__REPO__|$(esc "$repo")|g" -e "s|__HOME__|$(esc "$HOME")|g" -e "s|__DICTATE_SSH__|$(esc "$host")|g" "$template" \
-  | ARGS_XML="$args_xml" awk '/^__ARGS__$/ { printf "%s", ENVIRON["ARGS_XML"]; next } { print }')
+  | ARGS_XML="$args_xml" ENV_XML="$env_xml" awk '
+      /^__ARGS__$/ { printf "%s", ENVIRON["ARGS_XML"]; next }
+      /^__ENV__$/  { printf "%s", ENVIRON["ENV_XML"]; next }
+      { print }')
 
 tmp=$(mktemp "${TMPDIR:-/tmp}/$label.XXXXXX")
 printf '%s\n' "$plist" > "$tmp"
