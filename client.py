@@ -58,7 +58,7 @@ p.add_argument("--no-insert", action="store_true", help="(testing) log what woul
 p.add_argument("--mic", default=os.environ.get("DICTATE_MIC", "default"),
                help="input device: 'default' (whatever macOS currently uses: AirPods when worn, etc.), "
                     "'builtin' (the Mac's own mic, keeps Bluetooth headphones in music mode), "
-                    "or part of a device name (or DICTATE_MIC)")
+                    "part of a device name, or an index from --list-mics (or DICTATE_MIC)")
 p.add_argument("--debug", action="store_true")
 p.add_argument("--list-mics", action="store_true", help="list input devices (the system default marked *) and exit")
 p.add_argument("--doctor", action="store_true",
@@ -446,6 +446,11 @@ class Recorder:
             for i, d in devs:
                 if not any(h in d["name"].lower() for h in BLUETOOTH_HINTS):
                     return i
+            return None
+        if want.isdigit():                      # an index from --list-mics
+            if any(i == int(want) for i, _ in devs):
+                return int(want)
+            log(f"  no input device with index {want}; using the system default")
             return None
         for i, d in devs:
             if want in d["name"].lower():
