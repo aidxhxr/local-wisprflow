@@ -56,6 +56,12 @@ def test_clean():
     eq(clean("summer is here"), "Summer is here", "'um' inside a word is kept")
     eq(clean("the hummus"), "The hummus", "'hmm' inside a word is kept")
     eq(clean("line one\nline two"), "Line one line two", "newlines collapsed")
+    eq(clean("move it to to Thursday"), "Move it to Thursday", "stutter collapsed")
+    eq(clean("get the the the new deck"), "Get the new deck", "triple stutter collapsed")
+    eq(clean("no, no, I meant Friday"), "No, I meant Friday", "stutter across a comma collapsed")
+    eq(clean("that is what I I said"), "That is what I I said", "one-letter repeats kept")
+    eq(clean("there there, it is fine"), "There, it is fine", "case-insensitive repeat")
+    eq(clean("the theme is dark"), "The theme is dark", "prefix of the next word is not a repeat")
 
 
 def test_postprocess():

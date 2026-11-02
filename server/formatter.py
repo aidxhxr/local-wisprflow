@@ -230,6 +230,9 @@ def _messages(category, app, title, selected, transcript, vocab=None):
 
 # ---------------------------------------------------------------- fallback cleanup
 _FILLER = re.compile(r"\b(?:u+h+m*|u+m+|e+r+m*|h+m+)\b[,.]?\s*", re.IGNORECASE)
+# A stutter the recognizer wrote down: "the the deck", "to to Thursday". Two-letter words and
+# longer only, so a dictated "I I" or "a a" (rare, but possible as a spelling) is left alone.
+_STUTTER = re.compile(r"\b(\w{2,})(?:[,.]?\s+\1\b)+", re.IGNORECASE)
 
 
 def clean(text: str) -> str:
@@ -237,6 +240,7 @@ def clean(text: str) -> str:
     if not text:
         return ""
     text = _FILLER.sub("", text)
+    text = _STUTTER.sub(r"\1", text)
     text = re.sub(r"\s+", " ", text).strip()
     text = re.sub(r"\s+([,.?!;:])", r"\1", text)
     text = re.sub(r"^[,.;:\s]+", "", text)
