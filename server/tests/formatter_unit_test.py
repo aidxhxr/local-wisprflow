@@ -44,6 +44,10 @@ def test_categorize():
     eq(categorize("org.mozilla.firefox", "Firefox", "Sprint board - Jira"), "document", "jira tab")
     eq(categorize("com.google.Chrome", "Chrome", "Zillow"), "browser", "unknown tab")
     eq(categorize("com.google.Chrome", "Chrome", ""), "browser", "browser, no title")
+    eq(categorize("com.google.Chrome.canary", "Chrome Canary", ""), "browser", "chrome canary prefix match")
+    eq(categorize("org.mozilla.firefoxdeveloperedition", "Firefox", "ChatGPT"), "ai_chat", "firefox dev edition")
+    eq(categorize("com.kagi.kagimacOS", "Orion", "Inbox - Gmail"), "email", "orion")
+    eq(categorize("im.riot.app", "Element"), "chat", "element")
     # Unknown or missing bundle.
     eq(categorize("com.example.unknown", "Thing"), "other", "unknown bundle")
     eq(categorize("", "", ""), "other", "empty context")

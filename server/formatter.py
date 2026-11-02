@@ -35,7 +35,7 @@ _BUNDLES = {
     "chat": ["com.apple.MobileSMS", "com.tinyspeck.slackmacgap", "com.hnc.Discord", "ru.keepcoder.Telegram",
              "org.telegram.desktop", "net.whatsapp.WhatsApp", "com.facebook.archon", "com.microsoft.teams",
              "com.microsoft.teams2", "us.zoom.xos", "com.signal.Signal", "org.whispersystems.signal-desktop",
-             "Mattermost.Desktop"],
+             "Mattermost.Desktop", "im.riot.app", "org.zulip.zulip-electron"],
     "email": ["com.apple.mail", "com.microsoft.Outlook", "com.superhuman.electron", "com.readdle.smartemail-Mac",
               "com.mimestream.Mimestream", "com.airmail", "com.sparkmailapp", "org.mozilla.thunderbird"],
     "ai_chat": ["com.openai.chat", "com.anthropic.claudefordesktop", "com.openai.sky", "ai.perplexity.mac",
@@ -47,9 +47,10 @@ _BUNDLES = {
                  "com.apple.reminders", "com.culturedcode.ThingsMac", "com.todoist.mac.Todoist",
                  "com.linear", "com.figma.Desktop", "com.electron.logseq", "pro.writer.mac"],
 }
-_BROWSERS = ["com.google.Chrome", "com.apple.Safari", "org.mozilla.firefox", "app.zen-browser.zen",
-             "company.thebrowser.Browser", "com.brave.Browser", "com.microsoft.edgemac", "com.vivaldi.Vivaldi",
-             "com.operasoftware.Opera", "org.chromium.Chromium"]
+_BROWSERS = ["com.google.Chrome", "com.apple.Safari", "org.mozilla.firefox", "org.mozilla.nightly",
+             "app.zen-browser.zen", "company.thebrowser.Browser", "com.brave.Browser", "com.microsoft.edgemac",
+             "com.vivaldi.Vivaldi", "com.operasoftware.Opera", "org.chromium.Chromium", "com.kagi.kagimacOS",
+             "com.duckduckgo.macos.browser"]
 _TITLE_HINTS = [
     ("ai_chat", r"chatgpt|claude|gemini|perplexity|copilot|grok|deepseek|mistral|le chat|poe\b|character\.ai|openai"
                 r"|t3\.chat|notebooklm|ai studio|aistudio"),
