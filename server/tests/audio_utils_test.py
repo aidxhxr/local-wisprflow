@@ -59,6 +59,10 @@ check("not halluc sentence", not looks_hallucinated("Okay, send the report tomor
 check("not halluc thanks for the help", not looks_hallucinated("Thanks for the help."))
 check("not halluc empty", not looks_hallucinated(""))
 check("not halluc two real words", not looks_hallucinated("Send it"))
+check("halluc repeated word", looks_hallucinated("Yeah, yeah, yeah."))
+check("halluc Okay okay okay", looks_hallucinated("Okay okay okay"))
+check("not halluc four repeats", not looks_hallucinated("no no no no"))
+check("not halluc mixed words", not looks_hallucinated("yeah thanks"))
 
 print(f"{failures} failure(s)")
 sys.exit(1 if failures else 0)

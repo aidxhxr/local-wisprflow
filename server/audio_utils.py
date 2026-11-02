@@ -15,8 +15,14 @@ HALLUCINATIONS = {"okay", "ok", "yeah", "yes", "yep", "nope", "no", "hmm", "mm",
 
 
 def looks_hallucinated(text: str) -> bool:
+    """True when the whole transcript is a stock phrase, or up to three repeats of one lone
+    word from the list ("Yeah yeah yeah." from a breath is as empty as "Yeah.")."""
     words = "".join(c for c in text.lower() if c.isalpha() or c == " ").split()
-    return " ".join(words) in HALLUCINATIONS
+    if not words:
+        return False
+    if " ".join(words) in HALLUCINATIONS:
+        return True
+    return len(words) <= 3 and len(set(words)) == 1 and words[0] in HALLUCINATIONS
 
 
 def pcm16_to_f32(raw: bytes) -> np.ndarray:
