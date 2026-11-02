@@ -1377,7 +1377,12 @@ def main():
                     f"Run: pkill -f 'ssh -N.*{args.port}'")
             os._exit(1)
     log("server ok. checking microphone ...")
-    d.rec.check()
+    try:
+        d.rec.check()
+    except Exception as e:
+        log(f"cannot open the microphone ({e.__class__.__name__}: {e}). Run --list-mics and pick one with --mic, "
+            f"or grant Microphone to {os.environ.get('TERM_PROGRAM', 'the launching app')} in System Settings")
+        os._exit(2)     # a setup error: the tmux wrapper does not restart on 2
     listener = keyboard.Listener(on_press=d.on_press, on_release=d.on_release)
     listener.start()
     log(f"ready. hold [{args.key}] to dictate · tap for hands-free · select text + speak to edit · Ctrl-C quits")
