@@ -16,7 +16,8 @@ scp -q tests/*.py tests/*.wav tests/README.md "$host:~/dictate/tests/"   # not _
 scp -q dictate.service dictate-llm.service "$host:~/.config/systemd/user/"
 ssh "$host" "systemctl --user daemon-reload && systemctl --user restart dictate${llm:+ dictate-llm}"
 echo "restarted dictate${llm:+ and dictate-llm}; waiting for the model ..."
-for i in $(seq 1 ${llm:+120}${llm:-60}); do
+tries=60; [ -n "$llm" ] && tries=120      # vLLM takes about twice as long to come back
+for i in $(seq 1 "$tries"); do
   if ssh "$host" 'curl -sf -m 3 localhost:8765/health' 2>/dev/null | grep -q '"ok":true'; then
     echo "ok after ~$((i * 3))s"; exit 0
   fi
