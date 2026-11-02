@@ -397,8 +397,8 @@ class Session:
         self.task.cancel()
         try:
             await self.task
-        except BaseException:
-            pass
+        except (asyncio.CancelledError, Exception):
+            pass            # the loop's own errors were logged there; a Ctrl-C must still propagate
         buf = self._buffer()
         reuse = self.partial_text if (self.n_transcribed == self.n and self.n > 0) else None
         await self._emit_final(buf, reuse=reuse, segment=self.seg + 1)
