@@ -15,7 +15,8 @@ skip() { printf '  --    %s\n' "$1"; }
 ssh_q() { ssh -o BatchMode=yes -o ConnectTimeout=5 -o LogLevel=ERROR "$host" "$@"; }
 
 echo "Mac"
-if pid=$(pgrep -f 'client\.py' | head -1) && [ -n "$pid" ]; then
+# The launcher execs python under the name "dictate"; match either, but not `vim client.py`.
+if pid=$(pgrep -f '^(dictate|[^ ]*python[0-9.]*) [^ ]*client\.py' | head -1) && [ -n "$pid" ]; then
   ok "client running (pid $pid, $(ps -o etime= -p "$pid" | tr -d ' ') up)"
 else
   bad "client not running: ./dictate, scripts/dictate-tmux, or the LaunchAgent"
