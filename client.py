@@ -26,7 +26,8 @@ from ApplicationServices import (AXUIElementCreateApplication, AXUIElementCopyAt
 
 SR = 16000
 TAP_S = 0.35
-FINAL_TIMEOUT_S = 12        # give up waiting for the server's final after this long
+FINAL_TIMEOUT_S = 12        # give up waiting for the server's final after this long ...
+FINAL_TIMEOUT_PER_S = 0.1   # ... plus this much per second of audio: a long hold is re-transcribed in chunks
 FOCUS_CONFIRM_S = 0.15      # a focus change must still hold after this long to count
 HANDSFREE_IDLE_S = int(os.environ.get("DICTATE_HANDSFREE_IDLE_S", "300"))   # hands-free stops itself after this long without speech
 HOTKEYS = {"alt_r": keyboard.Key.alt_r, "alt_l": keyboard.Key.alt_l, "cmd_r": keyboard.Key.cmd_r,
@@ -871,6 +872,7 @@ class Dictation:
         self.where = ""
         self.mic = ""                # input device of the current session, for the pill
         self.sid = ""
+        self.t_start = 0.0
         self.t_stop = 0.0
         self.out_q: queue.Queue = queue.Queue()   # partials and finals, in order, one worker
         self.live = LiveText(kb)
@@ -911,6 +913,7 @@ class Dictation:
             self.where = ctx["app"] or "?"
             self.mic = getattr(self.rec, "last_device", None) or ""
             self.sid = f"{time.time():.3f}"
+            self.t_start = time.time()
             self.streamer.send({"type": "start", "id": self.sid, "mode": "hold", "context": ctx})
             self.live.reset()
             self.live_seg, self.live_seq = 1, 0
@@ -957,7 +960,8 @@ class Dictation:
             self.streamer.send({"type": "stop"})
             ding("Pop")
             self.ov.processing(self.where, "")
-            threading.Timer(FINAL_TIMEOUT_S, self._check_final, args=[self.sid]).start()
+            timeout = FINAL_TIMEOUT_S + (self.t_stop - self.t_start) * FINAL_TIMEOUT_PER_S
+            threading.Timer(timeout, self._check_final, args=[self.sid, timeout]).start()
 
     def cancel(self):
         """Escape: throw the session away. Nothing is inserted, the live text is erased."""
@@ -974,10 +978,10 @@ class Dictation:
             self.ov.cancelled()
             log(f"  cancelled (session {self.sid})")
 
-    def _check_final(self, sid):
+    def _check_final(self, sid, timeout):
         """The server never answered our stop; don't leave the overlay stuck on 'Formatting'."""
         if sid not in self.finals_seen and not self.active:
-            log(f"  no final from server after {FINAL_TIMEOUT_S}s (session {sid})")
+            log(f"  no final from server after {timeout:.0f}s (session {sid})")
             self.ov.error("No response from the GPU box. Check: journalctl --user -u dictate")
             ding("Basso")
 
