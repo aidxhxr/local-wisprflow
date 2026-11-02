@@ -23,6 +23,8 @@ x = pcm16_to_f32(raw)
 check("pcm16 dtype", x.dtype == np.float32)
 check("pcm16 values", np.allclose(x, [0.0, 0.5, -1.0, 32767 / 32768]))
 check("pcm16 empty", len(pcm16_to_f32(b"")) == 0)
+check("pcm16 odd byte dropped", np.array_equal(pcm16_to_f32(raw + b"\x7f"), x))
+check("pcm16 single byte", len(pcm16_to_f32(b"\x01")) == 0)
 
 # resample: same rate is a no-op, other rates scale the length and keep the endpoints
 y = np.linspace(0, 1, 48000, dtype=np.float32)

@@ -20,7 +20,9 @@ def looks_hallucinated(text: str) -> bool:
 
 
 def pcm16_to_f32(raw: bytes) -> np.ndarray:
-    return np.frombuffer(raw, dtype="<i2").astype(np.float32) / 32768.0
+    """Little-endian int16 bytes -> float32 in [-1, 1). A trailing odd byte (a frame split by a
+    proxy or a truncated upload) is dropped instead of raising from inside numpy."""
+    return np.frombuffer(raw[:len(raw) & ~1], dtype="<i2").astype(np.float32) / 32768.0
 
 
 def resample(x: np.ndarray, sr: int) -> np.ndarray:
