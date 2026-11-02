@@ -4,7 +4,7 @@ Hold the hotkey (default Right Option) to dictate; release to insert.
 Tap it once for hands-free mode (auto-segments on pauses); tap again to stop.
 Select text first and speak an instruction ("make this more formal") to rewrite the selection.
 """
-import argparse, atexit, fcntl, json, os, queue, signal, socket, subprocess, threading, time, wave
+import argparse, atexit, fcntl, json, os, queue, shlex, signal, socket, subprocess, threading, time, wave
 from collections import deque
 import numpy as np
 import websocket
@@ -60,6 +60,9 @@ p.add_argument("--doctor", action="store_true",
 args = p.parse_args()
 if args.key not in HOTKEYS:     # argparse does not check a default (DICTATE_KEY) against choices
     p.error(f"--key/DICTATE_KEY must be one of {', '.join(sorted(HOTKEYS))}, not {args.key!r}")
+if args.host and (args.host.startswith("-") or any(c.isspace() for c in args.host)):
+    # The host goes on an ssh command line; "-oProxyCommand=..." or "a b" is not a host.
+    p.error(f"--host/DICTATE_SSH must be user@host or an ssh config alias, not {args.host!r}")
 HOTKEY = HOTKEYS[args.key]
 
 
@@ -111,7 +114,7 @@ class Tunnel:
                 time.sleep(0.1)
             ssh = (f"ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=15 -o ServerAliveCountMax=3 "
                    f"-o ConnectTimeout=10 -o TCPKeepAlive=yes "
-                   f"-o BatchMode=yes -L {args.port}:127.0.0.1:{args.port} {args.host}")
+                   f"-o BatchMode=yes -L {args.port}:127.0.0.1:{args.port} {shlex.quote(args.host)}")
             # Watchdog: if this client dies for any reason, the tunnel goes with it.
             script = (f"{ssh} & p=$!; trap 'kill $p 2>/dev/null; exit 0' TERM INT HUP; "
                       f"while kill -0 {os.getpid()} 2>/dev/null && kill -0 $p 2>/dev/null; do sleep 1; done; kill $p 2>/dev/null")
