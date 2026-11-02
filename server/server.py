@@ -195,8 +195,16 @@ async def transcribe(request: Request, sr: int = Query(SR)):
 
 @app.post("/format")
 async def format_only(request: Request):
-    body = await request.json()
-    return await _fmt.format(body.get("text", ""), body.get("context") or {})
+    try:
+        body = await request.json()
+    except ValueError:
+        return JSONResponse({"error": "body is not JSON"}, status_code=400)
+    if not isinstance(body, dict) or not isinstance(body.get("text", ""), str):
+        return JSONResponse({"error": "expected {\"text\": str, \"context\": {...}}"}, status_code=400)
+    context = body.get("context") or {}
+    if not isinstance(context, dict):
+        return JSONResponse({"error": "context must be an object"}, status_code=400)
+    return await _fmt.format(body.get("text", ""), context)
 
 
 # ------------------------------------------------------------------ streaming session
