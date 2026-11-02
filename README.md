@@ -52,14 +52,15 @@ rather than send backspaces into the wrong window.
 Turn it off with `--no-live` or `DICTATE_LIVE=0` if an app fights synthetic keystrokes (autocomplete
 popups, smart quotes); you then get the old behaviour of a single insert on release.
 
-Flags: `--key cmd_r|ctrl_r|shift_r|f13|f18|f19`, `--quiet` (no sounds), `--no-overlay`, `--no-live`,
-`--type` (type the final instead of pasting), `--mic default|builtin|<name>` (see below),
-`--doctor` (check ssh, server, mic and permissions, then exit), `--list-mics` (print input devices and exit),
-`--paste-delay 0.3` (seconds before the clipboard is restored after a paste; raise it for an app that pastes
-the old clipboard), `--fake-audio clip.wav` (smoke test, no hotkey needed), `--no-insert` (log instead of
-typing; for testing). Environment: `DICTATE_SSH`, `DICTATE_KEY`, `DICTATE_PORT`, `DICTATE_MIC`, `DICTATE_LIVE`,
-`DICTATE_PASTE_DELAY` are the defaults for the matching flags. Only one client runs at a time: a second one
-exits naming the pid of the first.
+Flags: `--key alt_l|cmd_r|ctrl_r|shift_r|f13|f17|f18|f19|f20`, `--quiet` (no sounds), `--no-overlay`, `--no-live`,
+`--type` (type the final instead of pasting), `--mic default|builtin|<name>|<index>` (see below),
+`--doctor` (check ssh, server, formatter, mic and permissions, then exit), `--list-mics` (print input devices
+and exit), `--paste-delay 0.3` (seconds before the clipboard is restored after a paste; raise it for an app
+that pastes the old clipboard), `--debug` (ssh output, paste details, focus decisions), `--fake-audio clip.wav`
+(smoke test, no hotkey needed), `--no-insert` (log instead of typing; for testing). Environment: `DICTATE_SSH`,
+`DICTATE_KEY`, `DICTATE_PORT`, `DICTATE_MIC`, `DICTATE_LIVE`, `DICTATE_PASTE_DELAY` are the defaults for the
+matching flags; `DICTATE_HANDSFREE_IDLE_S` (default 300) is the hands-free idle cut-off. Only one client runs
+at a time: a second one exits naming the pid of the first.
 
 ### Custom vocabulary
 
@@ -73,8 +74,8 @@ By default the client records from whatever macOS currently uses as input, re-ch
 so AirPods put on after launch are picked up. A Bluetooth headset's mic flips the headset into the
 hands-free profile while recording (music pauses, the switch takes about a second), and some headsets
 deliver plain silence in that mode. `--mic builtin` (or `DICTATE_MIC=builtin`) records from the Mac's
-own microphone and leaves the headphones in music mode; `--mic <part of a device name>` picks a
-specific device.
+own microphone and leaves the headphones in music mode; `--mic <part of a device name>` or `--mic <index>`
+(the number printed by `--list-mics`) picks a specific device.
 
 ## What the formatter does
 
