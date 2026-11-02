@@ -102,7 +102,8 @@ launched the client, so what you grant depends on how you run it:
 
 - `./dictate` or `scripts/dictate-tmux` from a terminal: grant all three to the terminal app (Terminal,
   iTerm2, Ghostty, the IDE's terminal) and restart it afterwards. The most common reason the hotkey does
-  nothing is a terminal that was not restarted after the grant.
+  nothing is a terminal that was not restarted after the grant; the client prints a `WARNING:` line at
+  startup when Accessibility or Input Monitoring is still missing.
 - LaunchAgent: there is no terminal. launchd runs `.venv/bin/python` directly, so the grants belong to the
   python binary behind that symlink (`readlink -f .venv/bin/python`; the install script prints it). The
   Microphone prompt appears on the first recording. Accessibility and Input Monitoring never prompt: press
@@ -161,7 +162,17 @@ CUDA fault. The server now exits on those and systemd restarts it within ~15 s; 
 
 Files: `server.py` (FastAPI, `/stream` websocket, `/transcribe`, `/format`), `formatter.py`
 (prompt, app categories, few-shot examples), `vad.py` (Silero VAD for hands-free).
-Models can be swapped via `Environment=` in `~/.config/systemd/user/dictate*.service`.
+Models can be swapped via `Environment=` in `~/.config/systemd/user/dictate*.service`; the same place takes
+`DICTATE_AUTO_SILENCE_MS` (default 850) and `DICTATE_AUTO_MIN_SPEECH_MS` (400) to tune where hands-free
+cuts a sentence. `server/deploy.sh --llm` restarts the formatter service along with the ASR one.
+
+## Tests
+
+```
+scripts/test.sh                                   # Mac: live-text diff, formatter unit tests, audio helpers, ruff
+./dictate --fake-audio server/tests/two.wav --no-insert   # Mac: one full session through the real server, nothing typed
+.venv/bin/python tests/fmt_test.py                # GPU box: 20 formatting cases against the live LLM
+```
 
 ## Layout
 
@@ -171,6 +182,7 @@ dictate                   launcher
 requirements-client.txt   Mac client deps
 scripts/dictate-tmux      run the client detached in tmux (log / stop)
 scripts/status.sh         one-screen health check, Mac side and GPU box
+scripts/test.sh           every GPU-free test plus ruff, in one command
 scripts/*-launchagent.sh  install / remove the login LaunchAgent
 launchd/                  LaunchAgent plist template (placeholders filled by the install script)
 tests/live_text_test.py   client unit test for the live-text diff
@@ -182,5 +194,6 @@ server/vad.py             voice activity detection
 server/requirements.txt   ASR server deps (vLLM goes in its own venv)
 server/*.service          systemd units for the GPU box
 server/tests/             LLM formatting cases, websocket streamer, TTS wav fixtures
+ruff.toml                 lint rules (ruff check .)
 CLAUDE.md                 setup guide for both machines, written for an AI agent
 ```
