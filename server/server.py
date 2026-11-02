@@ -24,9 +24,11 @@ PARTIAL_MIN_NEW_AUDIO = 0.25     # s of new audio before re-transcribing
 PARTIAL_WINDOW_S = 20            # partials re-run ASR on at most this much trailing audio
 PARTIAL_CUT_SEARCH_S = 2.0       # ...and freeze the text before the quietest point in this span
 FINAL_CHUNK_S = 60               # final pass: transcribe long recordings in pieces this long
-AUTO_SILENCE_MS = 850            # hands-free: finalize after this much trailing silence
-AUTO_MIN_SPEECH_MS = 400         # ...but only if we heard at least this much speech
-AUTO_MAX_SEGMENT_S = 40          # hands-free: force a cut at the next short pause past this
+# Hands-free segmentation. The defaults suit normal speech; a slow talker who gets cut off
+# mid-sentence raises the silence, someone dictating lists lowers it (DICTATE_AUTO_* env).
+AUTO_SILENCE_MS = int(os.environ.get("DICTATE_AUTO_SILENCE_MS", "850"))      # finalize after this much trailing silence
+AUTO_MIN_SPEECH_MS = int(os.environ.get("DICTATE_AUTO_MIN_SPEECH_MS", "400"))  # ...but only after at least this much speech
+AUTO_MAX_SEGMENT_S = int(os.environ.get("DICTATE_AUTO_MAX_SEGMENT_S", "40"))   # force a cut at the next short pause past this
 MAX_BUFFER_S = 600
 IDLE_TIMEOUT_S = 20              # a session with no audio for this long has lost its client
 
