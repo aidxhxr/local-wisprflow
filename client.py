@@ -4,20 +4,19 @@ Hold the hotkey (default Right Option) to dictate; release to insert.
 Tap it once for hands-free mode (auto-segments on pauses); tap again to stop.
 Select text first and speak an instruction ("make this more formal") to rewrite the selection.
 """
-import argparse, atexit, fcntl, json, os, queue, signal, socket, subprocess, sys, threading, time, wave
+import argparse, atexit, fcntl, json, os, queue, signal, socket, subprocess, threading, time, wave
 from collections import deque
 import numpy as np
 import websocket
 from pynput import keyboard
 
-import objc
 from AppKit import (NSApplication, NSPanel, NSWindowStyleMaskBorderless, NSWindowStyleMaskNonactivatingPanel,
                     NSBackingStoreBuffered, NSColor, NSTextField, NSView, NSFont, NSScreen, NSStatusWindowLevel,
                     NSWindowCollectionBehaviorCanJoinAllSpaces, NSWindowCollectionBehaviorFullScreenAuxiliary,
                     NSWindowCollectionBehaviorStationary, NSApplicationActivationPolicyAccessory, NSMakeRect,
                     NSWorkspace, NSPasteboard, NSPasteboardTypeString, NSLineBreakByTruncatingHead,
                     NSFontWeightMedium, NSFontWeightRegular)
-from Foundation import NSObject, NSTimer
+from Foundation import NSTimer
 from PyObjCTools import AppHelper
 from Quartz import CABasicAnimation
 import Quartz
