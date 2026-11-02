@@ -414,6 +414,8 @@ class Session:
 @app.websocket("/stream")
 async def stream(ws: WebSocket):
     await ws.accept()
+    peer = f"{ws.client.host}:{ws.client.port}" if ws.client else "?"
+    log.info("stream connected from %s", peer)
     out_q: asyncio.Queue = asyncio.Queue()
 
     async def sender():
@@ -470,6 +472,7 @@ async def stream(ws: WebSocket):
     except Exception:
         log.exception("ws")
     finally:
+        log.info("stream from %s closed%s", peer, " with a session open" if session else "")
         if session:
             session.cancel()
         for tsk in list(finals):
