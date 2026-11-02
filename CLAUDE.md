@@ -118,7 +118,7 @@ to `4096`, then `systemctl --user daemon-reload && systemctl --user restart dict
 The ASR model needs roughly 3 GB on top of whatever vLLM takes.
 
 Later updates: `server/deploy.sh GPU_SSH` from the Mac copies the server files and units, restarts
-`dictate` and waits for `/health`. It does not restart `dictate-llm`.
+`dictate` and waits for `/health`. It does not restart `dictate-llm` unless given `--llm`.
 
 ### 1.5 Server-side tests
 
@@ -236,7 +236,7 @@ Pick one per machine, never two at once: two clients fight over the hotkey and p
   Check: `scripts/dictate-tmux log` ends with the `ready. hold [...]` line.
 - Login: `scripts/install-launchagent.sh [client flags]` writes
   `~/Library/LaunchAgents/com.local-wisprflow.dictate.plist` from the template in `launchd/`
-  with the repo path and `$DICTATE_SSH` filled in, loads it, and logs to
+  with the repo path, `$DICTATE_SSH` and any other `DICTATE_*` variable in the environment filled in, loads it, and logs to
   `~/Library/Logs/local-wisprflow.log`. `DRY_RUN=1` prints what it would do without touching
   anything. It refuses to run while another client is up. launchd starts `.venv/bin/python`
   directly, so the user must grant Microphone, Accessibility and Input Monitoring to the python
@@ -257,7 +257,7 @@ Check now: `scripts/status.sh` prints `all good` and exits 0.
 | Symptom | Cause / fix |
 |---|---|
 | `server not reachable on the tunnel` | `ssh -o BatchMode=yes GPU_SSH true` fails (key not loaded: `ssh-add`, or `ssh-add --apple-use-keychain` for a passphrase key), or `systemctl --user status dictate` on the box is not active. `scripts/status.sh` tells which; `curl localhost:8765/health` on the box must work. |
-| Hotkey does nothing, no pill | First `scripts/status.sh`: if the client is not running (terminal closed, reboot), start it (2.6). If it is, Input Monitoring / Accessibility not granted to the launching app, or terminal not restarted. |
+| Hotkey does nothing, no pill | First `scripts/status.sh`: if the client is not running (terminal closed, reboot), start it (2.6). If it is, Input Monitoring / Accessibility not granted to the launching app, or terminal not restarted; the client logs a `WARNING:` naming the missing one at startup. |
 | Pill listens, transcript stays empty | The system input is a Bluetooth headset whose mic delivers silence. `--mic builtin` (or `DICTATE_MIC=builtin`); `./dictate --doctor` shows the input level. |
 | Pill shows text but nothing is pasted | Accessibility missing, or the app blocks synthetic paste: try `--type`. |
 | Live text garbled in one app (autocomplete, smart quotes) | Run with `--no-live` for that workflow. |
@@ -272,8 +272,9 @@ Check now: `scripts/status.sh` prints `all good` and exits 0.
 - Models and ports: `Environment=` lines in `server/dictate.service` and the vLLM args in
   `server/dictate-llm.service`. Env vars read by the code: `DICTATE_MODEL`, `DICTATE_HOST`,
   `DICTATE_PORT` (server), `DICTATE_LLM_URL`, `DICTATE_LLM_MODEL`, `DICTATE_LLM_TIMEOUT` (formatter),
-  `DICTATE_VOCAB` (formatter), `DICTATE_SSH`, `DICTATE_KEY`, `DICTATE_PORT`, `DICTATE_MIC`, `DICTATE_LIVE`,
-  `DICTATE_PASTE_DELAY` (client).
+  `DICTATE_VOCAB` (formatter), `DICTATE_AUTO_SILENCE_MS`, `DICTATE_AUTO_MIN_SPEECH_MS`,
+  `DICTATE_AUTO_MAX_SEGMENT_S` (hands-free segmentation, server), `DICTATE_SSH`, `DICTATE_KEY`,
+  `DICTATE_PORT`, `DICTATE_MIC`, `DICTATE_LIVE`, `DICTATE_PASTE_DELAY`, `DICTATE_HANDSFREE_IDLE_S` (client).
 - Formatting behaviour, app categories, few-shot examples: `server/formatter.py`. After
   editing, `scp` it to `~/dictate/` and `systemctl --user restart dictate`.
 - Proper nouns the formatter should spell right: `~/dictate/vocab.txt` on the box (one per line,
