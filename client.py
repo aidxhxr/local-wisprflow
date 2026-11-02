@@ -824,14 +824,21 @@ def insert_text(text: str):
     pb = NSPasteboard.generalPasteboard()
     old = pasteboard_snapshot(pb)
     pb.clearContents()
-    ok = pb.setString_forType_(text, NSPasteboardTypeString)
+    if not pb.setString_forType_(text, NSPasteboardTypeString):
+        # Cmd-V now would paste whatever the clipboard held before. Type the text instead;
+        # astral characters come out garbled, but nothing foreign lands in the document.
+        warn_once("pasteboard", "  could not write the pasteboard; typing instead")
+        if old:
+            pasteboard_restore(pb, old)
+        type_keys(kb, text)
+        return
     mine = pb.changeCount()
     time.sleep(0.03)
     with kb.pressed(keyboard.Key.cmd):
         kb.press("v"); kb.release("v")
     if args.debug:
         fa = NSWorkspace.sharedWorkspace().frontmostApplication()
-        log(f"  paste: set={ok} front={fa.localizedName() if fa else None} pb={pb.stringForType_(NSPasteboardTypeString)!r:.40}")
+        log(f"  paste: front={fa.localizedName() if fa else None} pb={pb.stringForType_(NSPasteboardTypeString)!r:.40}")
     time.sleep(args.paste_delay)   # the app reads the pasteboard on its own schedule
     if pb.changeCount() != mine:
         return                  # the user copied something meanwhile; do not overwrite it
